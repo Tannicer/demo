@@ -1,0 +1,26 @@
+server:
+  port: 8080
+
+# 👉 数据源配置（请务必修改数据库名、账号、密码）
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/demo?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456 # 👈 改成你MySQL的密码
+
+# 👉 MyBatis 配置
+mybatis:
+  # 👉 这里的路径必须和你 XML 文件的位置一致
+  mapper-locations: classpath:mapper/*.xml
+  # 👉 改成你真实的实体类包名 (例如 com.example.demo.entity)
+  type-aliases-package: com.example.demo.entity
+  configuration:
+    map-underscore-to-camel-case: true # 下划线自动转驼峰
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl # 打印SQL
+
+# PageHelper 配置
+pagehelper:
+  helper-dialect: mysql
+  reasonable: true
+  support-methods-arguments: true
