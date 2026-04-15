@@ -12,7 +12,8 @@ public interface ExperienceShareMapper {
   int updateStatus(@Param("id") Long id, @Param("status") Integer status, @Param("updateTime") LocalDateTime updateTime);
   ExperienceShare selectById(@Param("id") Long id);
   List<ExperienceShare> selectList(@Param("status") Integer status);
-
-  // 新增：查询待审批数量
   Integer getPendingAuditCount();
+
+  // 新增：查询我的草稿
+  List<ExperienceShare> selectMyDraft(@Param("createBy") String createBy);
 }

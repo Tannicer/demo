@@ -14,7 +14,6 @@ public class ExperienceShare {
   @Schema(description = "分享主题", required = true)
   private String title;
 
-  // 🔥 原有单选字段（保持不变）
   @Schema(description = "分享形式（单选下拉）", required = true)
   private String type;
 
@@ -50,12 +49,15 @@ public class ExperienceShare {
   @Schema(description = "逻辑删除")
   private Integer isDeleted;
 
-  // ===================== 新增字段 =====================
-  // 数据库存储：逗号分隔字符串
-  @Schema(hidden = true) // 隐藏，不暴露给前端
+  // 关联客户（数据库存储）
+  @Schema(hidden = true)
   private String relatedCustomers;
 
-  // 前端交互：多选数组（接收/返回）
+  // 关联客户（前端多选数组）
   @Schema(description = "关联客户（多选下拉）", example = "[\"张三客户\",\"李四客户\"]")
   private List<String> relatedCustomerList;
+
+  // ===================== 新增：草稿状态 =====================
+  @Schema(description = "草稿状态：0=草稿，1=正式", defaultValue = "0")
+  private Integer draftStatus;
 }

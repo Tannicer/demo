@@ -105,4 +105,13 @@ public class ExperienceShareController {
     List<AuditRecordDTO> list = shareService.getRecentAuditRecords(auditBy);
     return result(true, "查询成功", list);
   }
+  // 新增：查询我的草稿
+  @Operation(summary = "查询我的草稿", description = "查询当前用户暂存的经验分享草稿")
+  @GetMapping("/my-draft")
+  public ResponseEntity<Map<String, Object>> getMyDraft(
+      @RequestParam String createBy,
+      @RequestParam(defaultValue = "1") Integer current,
+      @RequestParam(defaultValue = "10") Integer size) {
+    return result(true, "查询成功", shareService.getMyDraft(createBy, current, size));
+  }
 }

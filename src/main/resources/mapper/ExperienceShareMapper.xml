@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.demo.mapper.ExperienceShareMapper">
-    <!-- 插入语句（新增 related_customers 字段） -->
+    <!-- 插入语句（新增 draft_status） -->
     <insert id="insert" parameterType="ExperienceShare">
         INSERT INTO experience_share (
             title,type,category,summary,content,file_url,file_name,
             emp_no,branch_name,submit_time,remark,status,create_by,
-            create_time,update_by,update_time,is_deleted,related_customers
+            create_time,update_by,update_time,is_deleted,related_customers,draft_status
         )
         VALUES (
                    #{title},#{type},#{category},#{summary},#{content},#{fileUrl},#{fileName},
                    #{empNo},#{branchName},#{submitTime},#{remark},#{status},#{createBy},
-                   #{createTime},#{updateBy},#{updateTime},#{isDeleted},#{relatedCustomers}
+                   #{createTime},#{updateBy},#{updateTime},#{isDeleted},#{relatedCustomers},#{draftStatus}
                )
     </insert>
 
-    <!-- 查询语句（新增 related_customers 映射） -->
+    <!-- 查询语句（新增 draft_status） -->
     <select id="selectById" resultType="ExperienceShare">
         SELECT
             id,title,type,category,summary,content,file_url,file_name,
             emp_no,branch_name,submit_time,remark,status,create_by,
-            create_time,update_by,update_time,is_deleted,related_customers
+            create_time,update_by,update_time,is_deleted,related_customers,draft_status
         FROM experience_share
         WHERE id=#{id} AND is_deleted=0
     </select>
@@ -29,9 +29,10 @@
         SELECT
         id,title,type,category,summary,content,file_url,file_name,
         emp_no,branch_name,submit_time,remark,status,create_by,
-        create_time,update_by,update_time,is_deleted,related_customers
+        create_time,update_by,update_time,is_deleted,related_customers,draft_status
         FROM experience_share
         WHERE is_deleted=0
+        AND draft_status = 1 <!-- 仅查询正式数据 -->
         <if test="status!=null">AND status=#{status}</if>
         ORDER BY submit_time DESC
     </select>
@@ -42,7 +43,20 @@
         WHERE id=#{id} AND is_deleted=0
     </update>
 
+    <!-- 待审批数量：仅统计 正式+待审批 数据 -->
     <select id="getPendingAuditCount" resultType="java.lang.Integer">
-        SELECT COUNT(*) FROM experience_share WHERE status=0 AND is_deleted=0
+        SELECT COUNT(*) FROM experience_share
+        WHERE status=0 AND is_deleted=0 AND draft_status=1
+    </select>
+
+    <!-- 新增：查询我的草稿（单独给前端用） -->
+    <select id="selectMyDraft" resultType="ExperienceShare">
+        SELECT
+            id,title,type,category,summary,content,file_url,file_name,
+            emp_no,branch_name,submit_time,remark,status,create_by,
+            create_time,update_by,update_time,is_deleted,related_customers,draft_status
+        FROM experience_share
+        WHERE is_deleted=0 AND draft_status=0 AND create_by=#{createBy}
+        ORDER BY create_time DESC
     </select>
 </mapper>
