@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.dto.AuditStatsDTO;
 import com.example.demo.dto.AuditRecordDTO;
+import com.example.demo.dto.ShareDetailDTO;
 import com.example.demo.entity.ExperienceShare;
 import com.example.demo.entity.ExperienceShareAudit;
 import com.example.demo.mapper.ExperienceShareAuditMapper;
@@ -25,30 +26,37 @@ public class ExperienceShareService {
   private ExperienceShareAuditMapper auditMapper;
 
   // ===================== 核心：保存/暂存经验分享 =====================
+// 【变更2】修复提交时间赋值
   public boolean submitShare(ExperienceShare share) {
-    // 数据转换：多选客户数组 → 逗号字符串
+    if (share.getTitle() == null || share.getTitle().trim().isEmpty()
+        || share.getType() == null || share.getType().trim().isEmpty()
+        || share.getCategory() == null || share.getCategory().trim().isEmpty()
+        || share.getContent() == null || share.getContent().trim().isEmpty()
+        || share.getEmpNo() == null || share.getEmpNo().trim().isEmpty()) {
+      return false;
+    }
     if (share.getRelatedCustomerList() != null && !share.getRelatedCustomerList().isEmpty()) {
       share.setRelatedCustomers(String.join(",", share.getRelatedCustomerList()));
     }
     share.setIsDeleted(0);
     share.setCreateTime(LocalDateTime.now());
+    if (share.getDraftStatus() == 1) {
+      share.setSubmitTime(LocalDateTime.now());
+    }
 
-    // 状态规则：
-    // 0=草稿 → 不设置审批状态
-    // 1=正式 → 进入待审批(status=0)
     if (share.getDraftStatus() == null) {
-      share.setDraftStatus(0); // 默认草稿
+      share.setDraftStatus(0);
     }
     if (share.getDraftStatus() == 1) {
-      share.setStatus(0); // 正式提交 → 待审批
+      share.setStatus(0);
     } else {
-      share.setStatus(null); // 草稿 → 清空审批状态
+      share.setStatus(null);
     }
 
     return shareMapper.insert(share) > 0;
   }
 
-  // ===================== 新增：查询我的草稿 =====================
+  // ===================== 查询我的草稿 =====================
   public PageInfo<ExperienceShare> getMyDraft(String createBy, Integer current, Integer size) {
     PageHelper.startPage(current, size);
     List<ExperienceShare> list = shareMapper.selectMyDraft(createBy);
@@ -63,17 +71,36 @@ public class ExperienceShareService {
     return new PageInfo<>(list);
   }
 
-  // 详情查询（兼容草稿）
-  public ExperienceShare getDetail(Long id) {
+  // 【变更1】详情查询方法（无联表、仅核心字段）
+  public ShareDetailDTO getDetail(Long id) {
+    // 1. 单表查询主表数据
     ExperienceShare share = shareMapper.selectById(id);
     if (share == null) return null;
-    // 转换关联客户
-    if (StringUtils.hasText(share.getRelatedCustomers())) {
-      share.setRelatedCustomerList(Arrays.asList(share.getRelatedCustomers().split(",")));
-    } else {
-      share.setRelatedCustomerList(new ArrayList<>());
+
+    // 2. 构建详情DTO
+    ShareDetailDTO detailDTO = new ShareDetailDTO();
+    detailDTO.setId(share.getId());
+    detailDTO.setEmpNo(share.getEmpNo());
+    detailDTO.setBranchName(share.getBranchName());
+    detailDTO.setTitle(share.getTitle());
+    detailDTO.setSubmitTime(share.getSubmitTime());
+    detailDTO.setRemark(share.getRemark());
+
+    // 3. 已审批时单表查询审批记录
+    if (share.getStatus() != null && (share.getStatus() == 1 || share.getStatus() == 2)) {
+      List<ExperienceShareAudit> auditList = auditMapper.selectByShareId(share.getId());
+      if (!auditList.isEmpty()) {
+        ExperienceShareAudit latestAudit = auditList.stream()
+            .sorted((a1, a2) -> a2.getAuditTime().compareTo(a1.getAuditTime()))
+            .findFirst()
+            .orElse(null);
+        if (latestAudit != null) {
+          detailDTO.setAuditResult(latestAudit.getAuditResult());
+          detailDTO.setAuditDesc(latestAudit.getAuditDesc());
+        }
+      }
     }
-    return share;
+    return detailDTO;
   }
 
   // 分页查询（仅正式数据）
@@ -90,7 +117,7 @@ public class ExperienceShareService {
     return new PageInfo<>(list);
   }
 
-  // ===================== 以下代码保持不变（审批/统计/记录） =====================
+  // ===================== （审批/统计/记录） =====================
   @Transactional(rollbackFor = Exception.class)
   public boolean auditShare(Long id, Integer auditResult, String auditBy, String auditDesc) {
     int update = shareMapper.updateStatus(id, auditResult, LocalDateTime.now());
@@ -134,4 +161,7 @@ public class ExperienceShareService {
     }
     return result;
   }
+
+
+
 }
