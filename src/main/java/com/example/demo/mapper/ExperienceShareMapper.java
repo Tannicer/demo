@@ -1,23 +1,18 @@
 package com.example.demo.mapper;
 
-
 import com.example.demo.entity.ExperienceShare;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
 public interface ExperienceShareMapper {
-
-  // 1. 新增经验分享
   int insert(ExperienceShare share);
-
-  // 2. 更新审批信息
-  int updateAudit(ExperienceShare share);
-
-  // 3. 根据ID查询详情
+  int updateStatus(@Param("id") Long id, @Param("status") Integer status, @Param("updateTime") LocalDateTime updateTime);
   ExperienceShare selectById(@Param("id") Long id);
-
-  // 4. 分页查询列表（支持按状态筛选）
   List<ExperienceShare> selectList(@Param("status") Integer status);
+
+  // 新增：查询待审批数量
+  Integer getPendingAuditCount();
 }

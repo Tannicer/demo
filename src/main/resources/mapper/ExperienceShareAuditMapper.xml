@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://www.mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.mapper.ExperienceShareAuditMapper">
+    <insert id="insertAudit" parameterType="ExperienceShareAudit">
+        INSERT INTO experience_share_audit (share_id,audit_result,audit_time,audit_by,audit_desc,create_time,is_deleted)
+        VALUES (#{shareId},#{auditResult},#{auditTime},#{auditBy},#{auditDesc},#{createTime},#{isDeleted})
+    </insert>
+
+    <select id="selectByShareId" resultType="ExperienceShareAudit">
+        SELECT * FROM experience_share_audit WHERE share_id=#{shareId} AND is_deleted=0 ORDER BY audit_time DESC
+    </select>
+
+    <!-- 今日审批数量（按审批人） -->
+    <select id="getTodayAuditCount" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM experience_share_audit
+        WHERE DATE(audit_time) = CURDATE()
+        AND audit_by = #{auditBy}
+        AND is_deleted=0
+    </select>
+
+    <!-- 本周审批数量（按审批人） -->
+    <select id="getWeekAuditCount" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM experience_share_audit
+        WHERE YEARWEEK(audit_time,1) = YEARWEEK(CURDATE(),1)
+        AND audit_by = #{auditBy}
+        AND is_deleted=0
+    </select>
+
+    <!-- 本月审批数量（按审批人） -->
+    <select id="getMonthAuditCount" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM experience_share_audit
+        WHERE DATE_FORMAT(audit_time,'%Y%m') = DATE_FORMAT(CURDATE(),'%Y%m')
+        AND audit_by = #{auditBy}
+        AND is_deleted=0
+    </select>
+
+    <!-- 🔥 纯单表查询：最近3条审批记录 -->
+    <select id="getRecentAuditList" resultType="ExperienceShareAudit">
+        SELECT * FROM experience_share_audit
+        WHERE audit_by = #{auditBy} AND is_deleted=0
+        ORDER BY audit_time DESC
+        LIMIT 3
+    </select>
+</mapper>

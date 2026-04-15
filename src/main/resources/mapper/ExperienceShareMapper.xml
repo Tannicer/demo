@@ -1,49 +1,48 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<!-- 👉 这里的 namespace 必须改成你真实的 Mapper 接口全路径 -->
 <mapper namespace="com.example.demo.mapper.ExperienceShareMapper">
-
-    <!-- 1. 新增经验分享 -->
-    <insert id="insert" parameterType="com.example.demo.entity.ExperienceShare" useGeneratedKeys="true" keyProperty="id">
+    <!-- 插入语句（新增 related_customers 字段） -->
+    <insert id="insert" parameterType="ExperienceShare">
         INSERT INTO experience_share (
-            title, type, category, summary, content, file_url, file_name,
-            emp_no, branch_name, submit_time, remark, status, create_by, create_time, is_deleted
-        ) VALUES (
-                     #{title}, #{type}, #{category}, #{summary}, #{content}, #{fileUrl}, #{fileName},
-                     #{empNo}, #{branchName}, #{submitTime}, #{remark}, #{status}, #{createBy}, #{createTime}, 0
-                 )
+            title,type,category,summary,content,file_url,file_name,
+            emp_no,branch_name,submit_time,remark,status,create_by,
+            create_time,update_by,update_time,is_deleted,related_customers
+        )
+        VALUES (
+                   #{title},#{type},#{category},#{summary},#{content},#{fileUrl},#{fileName},
+                   #{empNo},#{branchName},#{submitTime},#{remark},#{status},#{createBy},
+                   #{createTime},#{updateBy},#{updateTime},#{isDeleted},#{relatedCustomers}
+               )
     </insert>
 
-    <!-- 2. 更新审批信息 -->
-    <update id="updateAudit" parameterType="com.example.demo.entity.ExperienceShare">
-        UPDATE experience_share
-        <set>
-            <if test="auditResult != null">audit_result = #{auditResult},</if>
-            <if test="status != null">status = #{status},</if>
-            <if test="auditBy != null">audit_by = #{auditBy},</if>
-            <if test="auditTime != null">audit_time = #{auditTime},</if>
-            <if test="rejectReason != null">reject_reason = #{rejectReason},</if>
-            update_time = #{updateTime}
-        </set>
-        WHERE id = #{id} AND is_deleted = 0
-    </update>
-
-    <!-- 3. 根据ID查询详情 -->
-    <select id="selectById" resultType="com.example.demo.entity.ExperienceShare">
-        SELECT * FROM experience_share WHERE id = #{id} AND is_deleted = 0
+    <!-- 查询语句（新增 related_customers 映射） -->
+    <select id="selectById" resultType="ExperienceShare">
+        SELECT
+            id,title,type,category,summary,content,file_url,file_name,
+            emp_no,branch_name,submit_time,remark,status,create_by,
+            create_time,update_by,update_time,is_deleted,related_customers
+        FROM experience_share
+        WHERE id=#{id} AND is_deleted=0
     </select>
 
-    <!-- 4. 分页查询列表（支持按状态筛选） -->
-    <!-- 👉 注意：这里返回的是 List，resultType 写实体类即可，MyBatis 会自动封装成 List -->
-    <select id="selectList" resultType="com.example.demo.entity.ExperienceShare">
-        SELECT * FROM experience_share
-        <where>
-            is_deleted = 0
-            <if test="status != null">
-                AND status = #{status}
-            </if>
-        </where>
+    <select id="selectList" resultType="ExperienceShare">
+        SELECT
+        id,title,type,category,summary,content,file_url,file_name,
+        emp_no,branch_name,submit_time,remark,status,create_by,
+        create_time,update_by,update_time,is_deleted,related_customers
+        FROM experience_share
+        WHERE is_deleted=0
+        <if test="status!=null">AND status=#{status}</if>
         ORDER BY submit_time DESC
     </select>
 
+    <update id="updateStatus">
+        UPDATE experience_share
+        SET status=#{status}, update_time=#{updateTime}
+        WHERE id=#{id} AND is_deleted=0
+    </update>
+
+    <select id="getPendingAuditCount" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM experience_share WHERE status=0 AND is_deleted=0
+    </select>
 </mapper>
