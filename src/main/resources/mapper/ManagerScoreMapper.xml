@@ -116,7 +116,7 @@
           AND emp_no = #{managerId}
     </select>
 
-    <!-- 查询客户经理基础信息+段位 -->
+    <!-- 查询客户经理基础信息+段位-->
     <select id="selectManagerDetail" resultType="java.util.Map">
         SELECT
             m.manager_id AS managerId,
