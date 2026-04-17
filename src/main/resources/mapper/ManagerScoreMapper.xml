@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.mapper.ManagerScoreMapper">
+
+    <!-- 第一步：查询已开户客户 → 客户经理【最高客群基础积分】 -->
+    <select id="selectMaxGroupScore" resultType="java.util.Map">
+        SELECT
+            c.manager_id AS managerId,
+            ROUND(IFNULL(MAX(g.score), 0), 2) AS baseScore
+        FROM customer_info c
+                 LEFT JOIN customer_group_category g
+                           ON c.group_code = g.group_code AND g.is_deleted = 0
+        WHERE c.is_deleted = 0
+          AND c.account_status = #{accountStatus}
+        GROUP BY c.manager_id
+    </select>
+
+    <!-- 第二步：查询已开户客户 → 产品奖励积分（封顶6分） -->
+    <select id="selectProductScore" resultType="java.util.Map">
+        SELECT
+            manager_id AS managerId,
+            ROUND(LEAST(COUNT(DISTINCT product) * 3.00, 6.00), 2) AS productScore
+        FROM customer_info
+        WHERE is_deleted = 0
+          AND account_status = #{accountStatus}
+          AND product IS NOT NULL AND product != ''
+        GROUP BY manager_id
+    </select>
+
+    <!-- 第三步：经验分享 → 审批通过1个+30分 -->
+    <select id="selectShareScore" resultType="java.util.Map">
+        SELECT
+            emp_no AS managerId,
+            ROUND(COUNT(id) * 30.00, 2) AS shareScore
+        FROM experience_share
+        WHERE is_deleted = 0
+          AND status = #{approveStatus}
+          AND draft_status = 1
+        GROUP BY emp_no
+    </select>
+
+    <!-- 根据总积分匹配段位编码 -->
+    <select id="selectLevelCodeByScore" resultType="java.lang.String">
+        SELECT level_code
+        FROM level_info
+        WHERE is_deleted = 0
+          AND min_score &lt;= #{totalScore}
+          AND (max_score IS NULL OR max_score &gt;= #{totalScore})
+    </select>
+
+    <!-- 更新总积分+段位 -->
+    <update id="updateManagerScore">
+        UPDATE manager_score_maintain
+        SET
+            total_score = #{totalScore},
+            level_code = #{levelCode},
+            update_time = NOW()
+        WHERE manager_id = #{managerId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 【新增】更新客户经理排名 -->
+    <update id="updateManagerRank">
+        UPDATE manager_score_maintain
+        SET
+            rank_num = #{rankNum},
+            update_time = NOW()
+        WHERE manager_id = #{managerId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 查询客户经理积分排行榜 -->
+    <select id="selectManagerRankList" resultType="java.util.Map">
+        SELECT
+            m.rank_num         AS rankNum,        -- 排名
+            m.manager_id       AS managerId,      -- 客户经理ID
+            m.manager_name     AS managerName,    -- 姓名
+            m.branch_name      AS branchName,     -- 所属支行
+            m.total_score      AS totalScore,     -- 总积分（2位小数）
+            l.level_name       AS levelName       -- 段位名称
+        FROM manager_score_maintain m
+                 LEFT JOIN level_info l
+                           ON m.level_code = l.level_code AND l.is_deleted = 0
+        WHERE m.is_deleted = 0
+        ORDER BY m.rank_num ASC  -- 按排名升序（第1名在前）
+    </select>
+
+
+    <!-- 查询单个客户经理 最高客群积分 -->
+    <select id="selectSingleBaseScore" resultType="java.math.BigDecimal">
+        SELECT ROUND(IFNULL(MAX(g.score), 0), 2)
+        FROM customer_info c
+                 LEFT JOIN customer_group_category g ON c.group_code = g.group_code AND g.is_deleted = 0
+        WHERE c.is_deleted = 0
+          AND c.account_status = #{accountStatus}
+          AND c.manager_id = #{managerId}
+    </select>
+
+    <!-- 查询单个客户经理 产品积分 -->
+    <select id="selectSingleProductScore" resultType="java.math.BigDecimal">
+        SELECT ROUND(LEAST(COUNT(DISTINCT product) * 3.00, 6.00), 2)
+        FROM customer_info
+        WHERE is_deleted = 0
+          AND account_status = #{accountStatus}
+          AND product IS NOT NULL AND product != ''
+          AND manager_id = #{managerId}
+    </select>
+
+    <!-- 查询单个客户经理 经验分享积分 -->
+    <select id="selectSingleShareScore" resultType="java.math.BigDecimal">
+        SELECT ROUND(COUNT(id) * 30.00, 2)
+        FROM experience_share
+        WHERE is_deleted = 0
+          AND status = #{approveStatus}
+          AND draft_status = 1
+          AND emp_no = #{managerId}
+    </select>
+
+    <!-- 查询客户经理基础信息+段位 -->
+    <select id="selectManagerDetail" resultType="java.util.Map">
+        SELECT
+            m.manager_id AS managerId,
+            m.manager_name AS managerName,
+            m.branch_name AS branchName,
+            m.total_score AS totalScore,
+            l.level_name AS levelName
+        FROM manager_score_maintain m
+                 LEFT JOIN level_info l ON m.level_code = l.level_code AND l.is_deleted = 0
+        WHERE m.manager_id = #{managerId} AND m.is_deleted = 0
+    </select>
+
+</mapper>
