@@ -106,7 +106,7 @@
           AND manager_id = #{managerId}
     </select>
 
-    <!-- 查询单个客户经理 经验分享积分 -->
+    <!-- 查询单个客户经理 经验分享积分-->
     <select id="selectSingleShareScore" resultType="java.math.BigDecimal">
         SELECT ROUND(COUNT(id) * 30.00, 2)
         FROM experience_share
