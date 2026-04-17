@@ -86,7 +86,6 @@
         ORDER BY m.rank_num ASC  -- 按排名升序（第1名在前）
     </select>
 
-
     <!-- 查询单个客户经理 最高客群积分 -->
     <select id="selectSingleBaseScore" resultType="java.math.BigDecimal">
         SELECT ROUND(IFNULL(MAX(g.score), 0), 2)
