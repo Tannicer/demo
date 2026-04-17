@@ -22,4 +22,12 @@ public interface ManagerScoreService {
    * 根据客户经理ID查询积分明细
    */
   Map<String, Object> getManagerScoreDetail(String managerId);
+
+  List<Map<String, Object>> getBranchRankList();
+
+  // 段位排行榜（人员）
+  List<Map<String, Object>> getLevelRankList();
+
+  // 各段位人数统计
+  List<Map<String, Object>> getLevelCount();
 }

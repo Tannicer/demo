@@ -129,4 +129,47 @@
         WHERE m.manager_id = #{managerId} AND m.is_deleted = 0
     </select>
 
+  <!-- 单位（支行）排行榜：排名、单位、参赛人数、总积分、人均积分 -->
+  <select id="selectBranchRankList" resultType="java.util.Map">
+    SELECT
+      ROW_NUMBER() OVER (ORDER BY SUM(m.total_score) DESC) AS rankNum,
+      m.branch_name AS branchName,
+      COUNT(m.manager_id) AS userCount,
+      ROUND(SUM(m.total_score), 2) AS totalScore,
+      ROUND(AVG(m.total_score), 2) AS avgScore
+    FROM manager_score_maintain m
+    WHERE m.is_deleted = 0
+      AND m.branch_name IS NOT NULL
+      AND m.branch_name != ''
+    GROUP BY m.branch_name
+    ORDER BY totalScore DESC
+  </select>
+
+  <!-- 段位排行榜（人员列表） -->
+  <select id="selectLevelRankList" resultType="java.util.Map">
+    SELECT
+      m.manager_name     AS managerName,
+      m.branch_name      AS branchName,
+      m.total_score      AS totalScore,
+      l.level_name       AS levelName
+    FROM manager_score_maintain m
+           LEFT JOIN level_info l
+                     ON m.level_code = l.level_code AND l.is_deleted = 0
+    WHERE m.is_deleted = 0
+    ORDER BY m.total_score DESC
+  </select>
+
+  <!-- 各段位人数统计 -->
+  <select id="selectLevelCount" resultType="java.util.Map">
+    SELECT
+      l.level_name       AS levelName,
+      COUNT(m.manager_id) AS count
+    FROM manager_score_maintain m
+           LEFT JOIN level_info l
+                     ON m.level_code = l.level_code AND l.is_deleted = 0
+    WHERE m.is_deleted = 0
+    GROUP BY l.level_name
+    ORDER BY count DESC
+  </select>
+
 </mapper>

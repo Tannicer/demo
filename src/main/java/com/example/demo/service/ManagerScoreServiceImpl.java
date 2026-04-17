@@ -154,4 +154,19 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
 
     return result;
   }
+
+  @Override
+  public List<Map<String, Object>> getBranchRankList() {
+    return managerScoreMapper.selectBranchRankList();
+  }
+
+  @Override
+  public List<Map<String, Object>> getLevelRankList() {
+    return managerScoreMapper.selectLevelRankList();
+  }
+
+  @Override
+  public List<Map<String, Object>> getLevelCount() {
+    return managerScoreMapper.selectLevelCount();
+  }
 }

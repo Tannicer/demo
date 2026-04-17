@@ -55,4 +55,13 @@ public interface ManagerScoreMapper {
 
   // 查询客户经理基础信息+段位
   Map<String, Object> selectManagerDetail(@Param("managerId") String managerId);
+
+  // 单位（支行）排行榜
+  List<Map<String, Object>> selectBranchRankList();
+
+  // 段位排行榜（所有人按积分倒序，带段位、单位、积分）
+  List<Map<String, Object>> selectLevelRankList();
+
+  // 各段位人数统计
+  List<Map<String, Object>> selectLevelCount();
 }
