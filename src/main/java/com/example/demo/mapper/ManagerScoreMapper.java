@@ -44,7 +44,6 @@ public interface ManagerScoreMapper {
    */
   List<Map<String, Object>> selectManagerRankList();
 
-
   // 查询单个客户经理 客群基础积分
   BigDecimal selectSingleBaseScore(@Param("managerId") String managerId, @Param("accountStatus") String accountStatus);
 
