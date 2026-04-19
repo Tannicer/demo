@@ -66,6 +66,8 @@ public interface ManagerScoreMapper {
   List<Map<String, Object>> selectLevelCount();
 
   List<Map<String, Object>> statCustomerCount();
+
   BigDecimal getAddScore(String type);
+
   Map<String, Object> getDeductRule();
 }
