@@ -64,4 +64,8 @@ public interface ManagerScoreMapper {
 
   // 各段位人数统计
   List<Map<String, Object>> selectLevelCount();
+
+  List<Map<String, Object>> statCustomerCount();
+  BigDecimal getAddScore(String type);
+  Map<String, Object> getDeductRule();
 }

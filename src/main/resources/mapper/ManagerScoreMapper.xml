@@ -172,4 +172,32 @@
     ORDER BY count DESC
   </select>
 
+  <!-- 按客户经理统计基数类、最新类的基础户、有效户数量 -->
+  <select id="statCustomerCount" resultType="java.util.Map">
+    SELECT
+      manager_no AS managerNo,
+      SUM(CASE WHEN tag_type=0 AND is_base=1 THEN 1 ELSE 0 END) AS base_tag0,
+      SUM(CASE WHEN tag_type=1 AND is_base=1 THEN 1 ELSE 0 END) AS base_tag1,
+      SUM(CASE WHEN tag_type=0 AND is_valid=1 THEN 1 ELSE 0 END) AS valid_tag0,
+      SUM(CASE WHEN tag_type=1 AND is_valid=1 THEN 1 ELSE 0 END) AS valid_tag1
+    FROM customer_detail
+    WHERE is_deleted = 0
+    GROUP BY manager_no
+  </select>
+
+  <!-- 获取加分 -->
+  <select id="getAddScore" resultType="java.math.BigDecimal">
+    SELECT points FROM score_add_rule
+    WHERE item_name = #{type} AND is_deleted = 0 LIMIT 1
+  </select>
+
+  <!-- 获取扣分规则 -->
+  <select id="getDeductRule" resultType="java.util.Map">
+    SELECT basic_reduce AS basicReduce, valid_reduce AS validReduce
+    FROM score_deduct_rule
+    WHERE is_deleted = 0 LIMIT 1
+  </select>
+
+
+
 </mapper>

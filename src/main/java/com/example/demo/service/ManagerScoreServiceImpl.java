@@ -1,5 +1,10 @@
 package com.example.demo.service;
+import com.example.demo.entity.ManagerScoreChange;
+import com.example.demo.mapper.ManagerScoreChangeMapper;
 import com.example.demo.mapper.ManagerScoreMapper;
+import jakarta.annotation.Resource;
+import java.math.BigInteger;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,6 +23,10 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
   @Autowired
   private ManagerScoreMapper managerScoreMapper;
 
+  // 注入Mapper
+  @Resource
+  private ManagerScoreChangeMapper managerScoreChangeMapper;
+
   // ===================== 固定常量 =====================
   private static final String ACCOUNT_STATUS_OPEN = "1";
   private static final Integer SHARE_STATUS_PASS = 1;
@@ -34,7 +43,55 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     List<Map<String, Object>> productScoreList = managerScoreMapper.selectProductScore(ACCOUNT_STATUS_OPEN);
     List<Map<String, Object>> shareScoreList = managerScoreMapper.selectShareScore(SHARE_STATUS_PASS);
 
-    // 2. 转换为Map结构（BigDecimal 支持2位小数）
+    // ==================== 客户类积分（基础户+有效户） ====================
+    List<Map<String, Object>> customerStatList = managerScoreMapper.statCustomerCount();
+    BigDecimal basePoint = managerScoreMapper.getAddScore("base");
+    BigDecimal validPoint = managerScoreMapper.getAddScore("valid");
+    Map<String, Object> ruleMap = managerScoreMapper.getDeductRule();
+    BigDecimal basicReduce = (BigDecimal) ruleMap.get("basicReduce");
+    BigDecimal validReduce = (BigDecimal) ruleMap.get("validReduce");
+
+    Map<String, BigDecimal> customerScoreMap = new HashMap<>();
+    // 存储基础户加分、扣分，有效户加分、扣分，用于记录日志
+    Map<String, Map<String, BigDecimal>> customerDetailMap = new HashMap<>();
+    for (Map<String, Object> map : customerStatList) {
+      String managerNo = (String) map.get("managerNo");
+
+      long base0 = ((Number) map.get("base_tag0")).longValue();
+      long base1 = ((Number) map.get("base_tag1")).longValue();
+      long valid0 = ((Number) map.get("valid_tag0")).longValue();
+      long valid1 = ((Number) map.get("valid_tag1")).longValue();
+
+      BigDecimal base0Dec = new BigDecimal(base0);
+      BigDecimal base1Dec = new BigDecimal(base1);
+      BigDecimal valid0Dec = new BigDecimal(valid0);
+      BigDecimal valid1Dec = new BigDecimal(valid1);
+
+      // 基础户
+      BigDecimal baseAdd = base1Dec.multiply(basePoint);
+      BigDecimal baseDown = base0Dec.subtract(base1Dec).max(BigDecimal.ZERO);
+      BigDecimal baseDeduct = baseDown.multiply(basicReduce);
+      BigDecimal baseTotal = baseAdd.subtract(baseDeduct);
+
+      // 有效户
+      BigDecimal validAdd = valid1Dec.multiply(validPoint);
+      BigDecimal validDown = valid0Dec.subtract(valid1Dec).max(BigDecimal.ZERO);
+      BigDecimal validDeduct = validDown.multiply(validReduce);
+      BigDecimal validTotal = validAdd.subtract(validDeduct);
+
+      BigDecimal customerScore = baseTotal.add(validTotal).setScale(2, RoundingMode.HALF_UP);
+      customerScoreMap.put(managerNo, customerScore);
+
+      // 存储明细，用于插入积分记录
+      Map<String, BigDecimal> detail = new HashMap<>();
+      detail.put("baseAdd", baseAdd);
+      detail.put("baseDeduct", baseDeduct);
+      detail.put("validAdd", validAdd);
+      detail.put("validDeduct", validDeduct);
+      customerDetailMap.put(managerNo, detail);
+    }
+
+    // 2. 转换为Map结构
     Map<String, BigDecimal> baseScoreMap = convertListToMap(baseScoreList);
     Map<String, BigDecimal> productScoreMap = convertListToMap(productScoreList);
     Map<String, BigDecimal> shareScoreMap = convertListToMap(shareScoreList);
@@ -44,26 +101,80 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     managerIdSet.addAll(baseScoreMap.keySet());
     managerIdSet.addAll(productScoreMap.keySet());
     managerIdSet.addAll(shareScoreMap.keySet());
+    managerIdSet.addAll(customerScoreMap.keySet());
 
-    // 4. 遍历计算总积分 + 段位
+    // 4. 遍历计算总积分 + 插入积分变动记录
     Map<String, BigDecimal> totalScoreMap = new HashMap<>();
     for (String managerId : managerIdSet) {
-      // 安全获取积分，默认0.00
+      // 获取各类积分
       BigDecimal baseScore = baseScoreMap.getOrDefault(managerId, ZERO);
       BigDecimal productScore = productScoreMap.getOrDefault(managerId, ZERO);
       BigDecimal shareScore = shareScoreMap.getOrDefault(managerId, ZERO);
+      BigDecimal customerScore = customerScoreMap.getOrDefault(managerId, ZERO);
 
-      // 总积分（保留2位小数）
+      // 计算总积分
       BigDecimal totalScore = baseScore.add(productScore)
           .add(shareScore)
+          .add(customerScore)
           .setScale(2, RoundingMode.HALF_UP);
-
       totalScoreMap.put(managerId, totalScore);
 
-      // 匹配段位
-      String levelCode = managerScoreMapper.selectLevelCodeByScore(totalScore);
+      // ===================== 🔥 核心：查询客户经理姓名、支行 =====================
+      Map<String, String> managerInfo = managerScoreChangeMapper.getManagerInfo(managerId);
+      if (managerInfo == null) {
+        throw new RuntimeException("客户经理不存在！");
+      }
+      String managerName = managerInfo.get("manager_name");
+      String branchName = managerInfo.get("branch_name");
 
-      // 更新数据库
+      // ===================== 🔥 1. 客群分类积分 插入记录 =====================
+      if (baseScore.compareTo(ZERO) > 0) {
+        saveScoreRecord(managerId, managerName, branchName,
+            "客群分类积分", "客户所属客群奖励", baseScore);
+      }
+
+      // ===================== 🔥 2. 产品积分 插入记录 =====================
+      if (productScore.compareTo(ZERO) > 0) {
+        saveScoreRecord(managerId, managerName, branchName,
+            "产品营销积分", "产品业务办理奖励", productScore);
+      }
+
+      // ===================== 🔥 3. 经验分享积分 插入记录 =====================
+      if (shareScore.compareTo(ZERO) > 0) {
+        saveScoreRecord(managerId, managerName, branchName,
+            "经验分享积分", "经验分享审核通过奖励", shareScore);
+      }
+
+      // ===================== 🔥 4. 基础户/有效户 积分/扣分 插入记录 =====================
+      Map<String, BigDecimal> detail = customerDetailMap.getOrDefault(managerId, new HashMap<>());
+      BigDecimal baseAdd = detail.getOrDefault("baseAdd", ZERO);
+      BigDecimal baseDeduct = detail.getOrDefault("baseDeduct", ZERO);
+      BigDecimal validAdd = detail.getOrDefault("validAdd", ZERO);
+      BigDecimal validDeduct = detail.getOrDefault("validDeduct", ZERO);
+
+      // 基础户加分
+      if (baseAdd.compareTo(ZERO) > 0) {
+        saveScoreRecord(managerId, managerName, branchName,
+            "基础户积分", "基础户数量达标奖励", baseAdd);
+      }
+      // 基础户下跌扣分（负数）
+      if (baseDeduct.compareTo(ZERO) > 0) {
+        saveScoreRecord(managerId, managerName, branchName,
+            "基础户下跌扣分", "基础户数量减少扣减", baseDeduct.negate());
+      }
+      // 有效户加分
+      if (validAdd.compareTo(ZERO) > 0) {
+        saveScoreRecord(managerId, managerName, branchName,
+            "有效户积分", "有效户数量达标奖励", validAdd);
+      }
+      // 有效户下跌扣分（负数）
+      if (validDeduct.compareTo(ZERO) > 0) {
+        saveScoreRecord(managerId, managerName, branchName,
+            "有效户下跌扣分", "有效户数量减少扣减", validDeduct.negate());
+      }
+
+      // 更新段位和总积分
+      String levelCode = managerScoreMapper.selectLevelCodeByScore(totalScore);
       Map<String, Object> param = new HashMap<>();
       param.put("managerId", managerId);
       param.put("totalScore", totalScore);
@@ -73,8 +184,7 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
 
     // 5. 更新排名
     calculateAndUpdateRank(totalScoreMap);
-
-    log.info("===== 客户经理积分计算完成，共更新 {} 个客户经理 =====", managerIdSet.size());
+    log.info("===== 客户经理积分计算完成 =====");
   }
 
   // ===================== 工具方法 =====================
@@ -168,5 +278,25 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
   @Override
   public List<Map<String, Object>> getLevelCount() {
     return managerScoreMapper.selectLevelCount();
+  }
+
+
+  // ===================== 调用示例：积分变动时插入 =====================
+  private void saveScoreRecord(String managerId, String managerName, String branchName,
+      String treasureName, String treasureDesc, BigDecimal score) {
+    ManagerScoreChange change = new ManagerScoreChange();
+    change.setTreasureName(treasureName);
+    change.setTreasureDesc(treasureDesc);
+    change.setManagerId(managerId);
+    change.setManagerName(managerName);
+    change.setPost("客户经理");
+    change.setBranchName(branchName);
+    change.setScore(score);
+    change.setTriggerTime(LocalDateTime.now());
+    change.setStatus("通过");
+    change.setRemark("系统自动计算");
+
+    // 插入记录表
+    managerScoreChangeMapper.insertScoreChange(change);
   }
 }

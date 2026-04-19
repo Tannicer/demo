@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.mapper.ManagerScoreChangeMapper">
+
+    <!-- 插入积分变动记录 -->
+    <insert id="insertScoreChange" parameterType="com.example.demo.entity.ManagerScoreChange"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO manager_score_change (
+            treasure_name,
+            treasure_desc,
+            manager_id,
+            manager_name,
+            post,
+            branch_name,
+            score,
+            trigger_time,
+            status,
+            remark,
+            is_deleted
+        ) VALUES (
+            #{treasureName},
+            #{treasureDesc},
+            #{managerId},
+            #{managerName},
+            #{post},
+            #{branchName},
+            #{score},
+            #{triggerTime},
+            #{status},
+            #{remark},
+            0
+        )
+    </insert>
+
+    <select id="getManagerInfo" resultType="java.util.Map">
+        SELECT manager_name, branch_name FROM manager_score_maintain WHERE manager_id = #{managerId} AND is_deleted=0
+    </select>
+
+</mapper>
