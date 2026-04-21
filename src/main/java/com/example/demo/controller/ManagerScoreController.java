@@ -4,6 +4,7 @@ import com.example.demo.dto.PageResponse;
 import com.example.demo.service.ManagerScoreService;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,11 +22,15 @@ public class ManagerScoreController {
 
   /**
    * 手动刷新所有客户经理积分
+   * @return 刷新结果
    */
   @GetMapping("/refresh")
-  public String refreshScore() {
+  public ResponseEntity<Map<String, Object>> refreshScore() {
     managerScoreService.calculateAllManagerScore();
-    return "积分计算成功！";
+    Map<String, Object> result = new HashMap<>();
+    result.put("code", 200);
+    result.put("message", "积分计算成功！");
+    return ResponseEntity.ok(result);
   }
 
   /**
@@ -38,36 +43,32 @@ public class ManagerScoreController {
     return ResponseEntity.ok(rankList);
   }
 
-  /**
-   * 【积分明细接口】根据客户经理ID查询详细积分来源
-   * @param managerId 客户经理8位ID
-   * @return 积分明细JSON
-   */
-  @GetMapping("/detail")
-  public ResponseEntity<Map<String, Object>> getScoreDetail(@RequestParam String managerId) {
-    Map<String, Object> detail = managerScoreService.getManagerScoreDetail(managerId);
-    return ResponseEntity.ok(detail);
-  }
 
-  // ===================== 【单位排行榜接口】 =====================
+
+  /**
+   * 获取单位（支行）排行榜
+   */
   @GetMapping("/branch-rank")
   public ResponseEntity<List<Map<String, Object>>> getBranchRank() {
     return ResponseEntity.ok(managerScoreService.getBranchRankList());
   }
 
-  // ===================== 【段位排行榜（人员）】 =====================
+  /**
+   * 获取段位排行榜（人员）
+   */
   @GetMapping("/level-rank")
   public ResponseEntity<List<Map<String, Object>>> levelRank() {
     return ResponseEntity.ok(managerScoreService.getLevelRankList());
   }
 
-  // ===================== 【各段位人数统计】 =====================
+  /**
+   * 获取各段位人数统计
+   */
   @GetMapping("/level-count")
   public ResponseEntity<List<Map<String, Object>>> levelCount() {
     return ResponseEntity.ok(managerScoreService.getLevelCount());
   }
 
-  // ===================== 【积分变更记录】 =====================
   /**
    * 获取所有客户经理的积分变更记录（分页）
    */

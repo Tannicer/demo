@@ -4,9 +4,7 @@ import com.example.demo.dto.PageResponse;
 import com.example.demo.entity.ManagerScoreChange;
 import com.example.demo.mapper.ManagerScoreChangeMapper;
 import com.example.demo.mapper.ManagerScoreMapper;
-import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,14 +21,12 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ManagerScoreServiceImpl implements ManagerScoreService {
 
   @Autowired
   private ManagerScoreMapper managerScoreMapper;
 
-  // 注入Mapper
-  @Resource
+  @Autowired
   private ManagerScoreChangeMapper managerScoreChangeMapper;
 
 
@@ -370,40 +366,7 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     return managerScoreMapper.selectManagerRankList();
   }
 
-  @Override
-  public Map<String, Object> getManagerScoreDetail(String managerId) {
 
-    // 1. 查询三项积分明细
-    BigDecimal baseScore = managerScoreMapper.selectSingleBaseScore(managerId, ACCOUNT_STATUS_OPEN);
-    BigDecimal productScore = managerScoreMapper.selectSingleProductScore(managerId, ACCOUNT_STATUS_OPEN);
-    BigDecimal shareScore = managerScoreMapper.selectSingleShareScore(managerId, SHARE_STATUS_PASS);
-
-    // 空值处理
-    baseScore = baseScore == null ? ZERO : baseScore;
-    productScore = productScore == null ? ZERO : productScore;
-    shareScore = shareScore == null ? ZERO : shareScore;
-
-    // 2. 查询客户经理基础信息
-    Map<String, Object> managerInfo = managerScoreMapper.selectManagerDetail(managerId);
-    if (managerInfo == null) {
-      throw new RuntimeException("客户经理不存在！");
-    }
-
-    // 3. 组装积分明细
-    Map<String, Object> result = new HashMap<>();
-    // 基础信息
-    result.put("managerId", managerInfo.get("managerId"));
-    result.put("managerName", managerInfo.get("managerName"));
-    result.put("branchName", managerInfo.get("branchName"));
-    result.put("levelName", managerInfo.get("levelName"));
-    result.put("totalScore", managerInfo.get("totalScore"));
-    // 积分明细（核心）
-    result.put("baseScore", "客群分类基础积分：" + baseScore + " 分（多客群取最高）");
-    result.put("productScore", "产品奖励积分：" + productScore + " 分（单个+3分，封顶6分）");
-    result.put("shareScore", "经验分享积分：" + shareScore + " 分（审批通过1条+30分）");
-
-    return result;
-  }
 
   /**
    * 查询支行排名列表

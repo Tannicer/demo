@@ -3,25 +3,25 @@
   "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.demo.mapper.ManagerScoreMapper">
 
-    <!-- 根据总积分匹配段位编码 -->
-    <select id="selectLevelCodeByScore" resultType="java.lang.String">
-        SELECT level_code
-        FROM level_info
-        WHERE is_deleted = 0
-          AND min_score &lt;= #{totalScore}
-          AND (max_score IS NULL OR max_score &gt;= #{totalScore})
-    </select>
+  <!-- 根据总积分匹配段位编码 -->
+  <select id="selectLevelCodeByScore" resultType="java.lang.String">
+    SELECT level_code
+    FROM level_info
+    WHERE is_deleted = 0
+      AND min_score &lt;= #{totalScore}
+      AND (max_score IS NULL OR max_score &gt;= #{totalScore})
+  </select>
 
-    <!-- 更新总积分+段位 -->
-    <update id="updateManagerScore">
-        UPDATE manager_score_maintain
-        SET
-            total_score = #{totalScore},
-            level_code = #{levelCode},
-            update_time = NOW()
-        WHERE manager_id = #{managerId}
-          AND is_deleted = 0
-    </update>
+  <!-- 更新总积分+段位 -->
+  <update id="updateManagerScore">
+    UPDATE manager_score_maintain
+    SET
+      total_score = #{totalScore},
+      level_code = #{levelCode},
+      update_time = NOW()
+    WHERE manager_id = #{managerId}
+      AND is_deleted = 0
+  </update>
 
   <!-- 单位（支行）排行榜：排名、单位、参赛人数、总积分、人均积分 -->
   <select id="selectBranchRankList" resultType="java.util.Map">
