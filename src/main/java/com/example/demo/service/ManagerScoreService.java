@@ -1,5 +1,6 @@
 package com.example.demo.service;
 
+import com.example.demo.dto.PageResponse;
 import java.util.List;
 import java.util.Map;
 
@@ -30,4 +31,14 @@ public interface ManagerScoreService {
 
   // 各段位人数统计
   List<Map<String, Object>> getLevelCount();
+
+  /**
+   * 获取所有客户经理的积分变更记录（分页）
+   */
+  com.example.demo.dto.PageResponse<Map<String, Object>> getScoreChangeList(int page, int size);
+
+  /**
+   * 获取单个客户经理的积分变更记录（分页）
+   */
+  com.example.demo.dto.PageResponse<Map<String, Object>> getScoreChangeListByManagerId(String managerId, int page, int size);
 }

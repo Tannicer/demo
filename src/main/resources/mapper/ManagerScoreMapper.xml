@@ -3,44 +3,6 @@
   "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.demo.mapper.ManagerScoreMapper">
 
-    <!-- 第一步：查询已开户客户 → 客户经理【最高客群基础积分】 -->
-    <select id="selectMaxGroupScore" resultType="java.util.Map">
-      SELECT
-        c.manager_id AS managerId,
-        ROUND(IFNULL(MAX(g.score), 0), 2) AS baseScore
-      FROM customer_info c
-             LEFT JOIN customer_group_category g
-                       ON FIND_IN_SET(g.group_code, c.group_code)
-                         AND g.is_deleted = 0
-      WHERE c.is_deleted = 0
-        AND c.account_status = #{accountStatus}
-      GROUP BY c.manager_id;
-    </select>
-
-    <!-- 第二步：查询已开户客户 → 产品奖励积分（封顶6分） -->
-    <select id="selectProductScore" resultType="java.util.Map">
-        SELECT
-            manager_id AS managerId,
-            ROUND(LEAST(COUNT(DISTINCT product) * 3.00, 6.00), 2) AS productScore
-        FROM customer_info
-        WHERE is_deleted = 0
-          AND account_status = #{accountStatus}
-          AND product IS NOT NULL AND product != ''
-        GROUP BY manager_id
-    </select>
-
-    <!-- 第三步：经验分享 → 审批通过1个+30分 -->
-    <select id="selectShareScore" resultType="java.util.Map">
-        SELECT
-            emp_no AS managerId,
-            ROUND(COUNT(id) * 30.00, 2) AS shareScore
-        FROM experience_share
-        WHERE is_deleted = 0
-          AND status = #{approveStatus}
-          AND draft_status = 1
-        GROUP BY emp_no
-    </select>
-
     <!-- 根据总积分匹配段位编码 -->
     <select id="selectLevelCodeByScore" resultType="java.lang.String">
         SELECT level_code
@@ -60,75 +22,6 @@
         WHERE manager_id = #{managerId}
           AND is_deleted = 0
     </update>
-
-    <!-- 【新增】更新客户经理排名 -->
-    <update id="updateManagerRank">
-        UPDATE manager_score_maintain
-        SET
-            rank_num = #{rankNum},
-            update_time = NOW()
-        WHERE manager_id = #{managerId}
-          AND is_deleted = 0
-    </update>
-
-    <!-- 查询客户经理积分排行榜 -->
-    <select id="selectManagerRankList" resultType="java.util.Map">
-        SELECT
-            m.rank_num         AS rankNum,        -- 排名
-            m.manager_id       AS managerId,      -- 客户经理ID
-            m.manager_name     AS managerName,    -- 姓名
-            m.branch_name      AS branchName,     -- 所属支行
-            m.total_score      AS totalScore,     -- 总积分（2位小数）
-            l.level_name       AS levelName       -- 段位名称
-        FROM manager_score_maintain m
-                 LEFT JOIN level_info l
-                           ON m.level_code = l.level_code AND l.is_deleted = 0
-        WHERE m.is_deleted = 0
-        ORDER BY m.rank_num ASC  -- 按排名升序（第1名在前）
-    </select>
-
-    <!-- 查询单个客户经理 最高客群积分 -->
-    <select id="selectSingleBaseScore" resultType="java.math.BigDecimal">
-        SELECT ROUND(IFNULL(MAX(g.score), 0), 2)
-        FROM customer_info c
-                 LEFT JOIN customer_group_category g ON c.group_code = g.group_code AND g.is_deleted = 0
-        WHERE c.is_deleted = 0
-          AND c.account_status = #{accountStatus}
-          AND c.manager_id = #{managerId}
-    </select>
-
-    <!-- 查询单个客户经理 产品积分 -->
-    <select id="selectSingleProductScore" resultType="java.math.BigDecimal">
-        SELECT ROUND(LEAST(COUNT(DISTINCT product) * 3.00, 6.00), 2)
-        FROM customer_info
-        WHERE is_deleted = 0
-          AND account_status = #{accountStatus}
-          AND product IS NOT NULL AND product != ''
-          AND manager_id = #{managerId}
-    </select>
-
-    <!-- 查询单个客户经理 经验分享积分-->
-    <select id="selectSingleShareScore" resultType="java.math.BigDecimal">
-        SELECT ROUND(COUNT(id) * 30.00, 2)
-        FROM experience_share
-        WHERE is_deleted = 0
-          AND status = #{approveStatus}
-          AND draft_status = 1
-          AND emp_no = #{managerId}
-    </select>
-
-    <!-- 查询客户经理基础信息+段位 -->
-    <select id="selectManagerDetail" resultType="java.util.Map">
-        SELECT
-            m.manager_id AS managerId,
-            m.manager_name AS managerName,
-            m.branch_name AS branchName,
-            m.total_score AS totalScore,
-            l.level_name AS levelName
-        FROM manager_score_maintain m
-                 LEFT JOIN level_info l ON m.level_code = l.level_code AND l.is_deleted = 0
-        WHERE m.manager_id = #{managerId} AND m.is_deleted = 0
-    </select>
 
   <!-- 单位（支行）排行榜：排名、单位、参赛人数、总积分、人均积分 -->
   <select id="selectBranchRankList" resultType="java.util.Map">
@@ -173,23 +66,17 @@
     ORDER BY count DESC
   </select>
 
-  <!-- 按客户经理统计基数类、最新类的基础户、有效户数量 -->
+  <!-- 统计客户经理下的基础户和有效户数量（按tag_type分类） -->
   <select id="statCustomerCount" resultType="java.util.Map">
     SELECT
       manager_no AS managerNo,
-      SUM(CASE WHEN tag_type=0 AND is_base=1 THEN 1 ELSE 0 END) AS base_tag0,
-      SUM(CASE WHEN tag_type=1 AND is_base=1 THEN 1 ELSE 0 END) AS base_tag1,
-      SUM(CASE WHEN tag_type=0 AND is_valid=1 THEN 1 ELSE 0 END) AS valid_tag0,
-      SUM(CASE WHEN tag_type=1 AND is_valid=1 THEN 1 ELSE 0 END) AS valid_tag1
+      SUM(CASE WHEN tag_type = 0 AND is_base = 1 THEN 1 ELSE 0 END) AS base_tag0,
+      SUM(CASE WHEN tag_type = 1 AND is_base = 1 THEN 1 ELSE 0 END) AS base_tag1,
+      SUM(CASE WHEN tag_type = 0 AND is_valid = 1 THEN 1 ELSE 0 END) AS valid_tag0,
+      SUM(CASE WHEN tag_type = 1 AND is_valid = 1 THEN 1 ELSE 0 END) AS valid_tag1
     FROM customer_detail
     WHERE is_deleted = 0
     GROUP BY manager_no
-  </select>
-
-  <!-- 获取加分 -->
-  <select id="getAddScore" resultType="java.math.BigDecimal">
-    SELECT points FROM score_add_rule
-    WHERE item_name = #{type} AND is_deleted = 0 LIMIT 1
   </select>
 
   <!-- 获取扣分规则 -->
@@ -199,6 +86,188 @@
     WHERE is_deleted = 0 LIMIT 1
   </select>
 
+  <!-- 更新已开户客户的account_status为1 -->
+  <update id="updateAccountStatusToOpened">
+    UPDATE customer_info
+    SET account_status = '1'
+    WHERE is_deleted = 0
+      AND account_status != '1'
+  </update>
 
+  <!-- 查询客户号对应的客户经理ID、客群编码、客户名称和标签 -->
+  <select id="selectCustomerInfoWithGroupCode" resultType="java.util.Map">
+    SELECT
+      customer_no AS customerId,
+      manager_id AS managerId,
+      group_code AS groupCode,
+      customer_name AS customerName,
+      tags
+    FROM customer_info
+    WHERE is_deleted = 0
+      AND account_status = '1'
+  </select>
+
+  <!-- 查询客户号对应的基础户/有效户状态 -->
+  <select id="selectCustomerDetailStatus" resultType="java.util.Map">
+    SELECT
+      customer_id AS customerId,
+      manager_no AS managerId,
+      is_base AS isBase,
+      is_valid AS isValid,
+      tag_type AS tagType
+    FROM customer_detail
+    WHERE is_deleted = 0
+  </select>
+
+  <!-- 查询客户经理的经验分享记录（已提交且审批通过） -->
+  <select id="selectExperienceShares" resultType="java.util.Map">
+    SELECT
+      id AS shareId,
+      manager_id AS managerId,
+      title AS shareTitle
+    FROM experience_share
+    WHERE is_deleted = 0
+      AND status = 1
+      AND draft_status = 1
+  </select>
+
+  <!-- 查询加分规则 -->
+  <select id="selectScoreAddRules" resultType="java.util.Map">
+    SELECT
+      item_name AS itemName,
+      points
+    FROM score_add_rule
+    WHERE is_deleted = 0
+  </select>
+
+  <!-- 计算客户经理的总积分 -->
+  <select id="calculateTotalScore" parameterType="string" resultType="java.math.BigDecimal">
+    SELECT
+      COALESCE(SUM(score), 0) AS totalScore
+    FROM manager_score_change
+    WHERE manager_id = #{managerId}
+  </select>
+
+  <!-- 更新客户经理排名 -->
+  <update id="updateRanking">
+    UPDATE manager_score_maintain m
+    JOIN (
+      SELECT
+        manager_id,
+        ROW_NUMBER() OVER (ORDER BY total_score DESC) AS new_rank
+      FROM manager_score_maintain
+      WHERE is_deleted = 0
+    ) r ON m.manager_id = r.manager_id
+    SET m.rank_num = r.new_rank
+    WHERE m.is_deleted = 0
+  </update>
+
+  <!-- 查询客户产品信息 -->
+  <select id="selectCustomerProducts" resultType="java.util.Map">
+    SELECT
+      ci.customer_no AS customerNo,
+      ci.customer_name AS customerName,
+      ci.manager_id AS managerId,
+      p.product_name AS productName
+    FROM customer_info ci
+    JOIN customer_product cp ON ci.customer_no = cp.customer_no
+    JOIN product p ON cp.product_id = p.product_id
+    WHERE ci.account_status = 1
+      AND ci.is_deleted = 0
+      AND cp.is_deleted = 0
+      AND p.is_deleted = 0
+  </select>
+
+  <!-- 查询客户经理基础户增量排名 -->
+  <select id="selectBaseCustomerIncrementRank" resultType="java.util.Map">
+    SELECT
+      manager_no AS managerId,
+      (SUM(CASE WHEN tag_type = 1 AND is_base = 1 THEN 1 ELSE 0 END) - SUM(CASE WHEN tag_type = 0 AND is_base = 1 THEN 1 ELSE 0 END)) AS baseIncrement,
+      ROW_NUMBER() OVER (ORDER BY (SUM(CASE WHEN tag_type = 1 AND is_base = 1 THEN 1 ELSE 0 END) - SUM(CASE WHEN tag_type = 0 AND is_base = 1 THEN 1 ELSE 0 END)) DESC) AS rank
+    FROM customer_detail
+    WHERE is_deleted = 0
+    GROUP BY manager_no
+    HAVING baseIncrement > 0
+  </select>
+
+  <!-- 查询客户经理有效户增量排名 -->
+  <select id="selectValidCustomerIncrementRank" resultType="java.util.Map">
+    SELECT
+      manager_no AS managerId,
+      (SUM(CASE WHEN tag_type = 1 AND is_valid = 1 THEN 1 ELSE 0 END) - SUM(CASE WHEN tag_type = 0 AND is_valid = 1 THEN 1 ELSE 0 END)) AS validIncrement,
+      ROW_NUMBER() OVER (ORDER BY (SUM(CASE WHEN tag_type = 1 AND is_valid = 1 THEN 1 ELSE 0 END) - SUM(CASE WHEN tag_type = 0 AND is_valid = 1 THEN 1 ELSE 0 END)) DESC) AS rank
+    FROM customer_detail
+    WHERE is_deleted = 0
+    GROUP BY manager_no
+    HAVING validIncrement > 0
+  </select>
+
+  <!-- 检查是否存在重复的积分变更记录 -->
+  <select id="checkDuplicateScoreChange" resultType="java.lang.Integer">
+    SELECT COUNT(*)
+    FROM manager_score_change
+    WHERE manager_id = #{managerId}
+      AND treasure_name = #{treasureName}
+      AND (customer_no = #{customerNo} OR #{customerNo} IS NULL)
+      AND (share_id = #{shareId} OR #{shareId} IS NULL)
+  </select>
+
+  <!-- 查询所有客户经理的积分变更记录（分页） -->
+  <select id="selectScoreChangeList" resultType="java.util.Map">
+    SELECT
+      id,
+      manager_id AS managerId,
+      manager_name AS managerName,
+      branch_name AS branchName,
+      treasure_name AS treasureName,
+      treasure_desc AS treasureDesc,
+      score,
+      customer_no AS customerNo,
+      customer_name AS customerName,
+      share_id AS shareId,
+      share_title AS shareTitle,
+      trigger_time AS triggerTime,
+      status,
+      remark
+    FROM manager_score_change
+    ORDER BY trigger_time DESC
+    LIMIT #{size} OFFSET #{offset}
+  </select>
+
+  <!-- 查询单个客户经理的积分变更记录（分页） -->
+  <select id="selectScoreChangeListByManagerId" resultType="java.util.Map">
+    SELECT
+      id,
+      manager_id AS managerId,
+      manager_name AS managerName,
+      branch_name AS branchName,
+      treasure_name AS treasureName,
+      treasure_desc AS treasureDesc,
+      score,
+      customer_no AS customerNo,
+      customer_name AS customerName,
+      share_id AS shareId,
+      share_title AS shareTitle,
+      trigger_time AS triggerTime,
+      status,
+      remark
+    FROM manager_score_change
+    WHERE manager_id = #{managerId}
+    ORDER BY trigger_time DESC
+    LIMIT #{size} OFFSET #{offset}
+  </select>
+
+  <!-- 查询所有积分变更记录的总数 -->
+  <select id="countScoreChangeList" resultType="java.lang.Long">
+    SELECT COUNT(*)
+    FROM manager_score_change
+  </select>
+
+  <!-- 查询单个客户经理的积分变更记录总数 -->
+  <select id="countScoreChangeListByManagerId" resultType="java.lang.Long">
+    SELECT COUNT(*)
+    FROM manager_score_change
+    WHERE manager_id = #{managerId}
+  </select>
 
 </mapper>

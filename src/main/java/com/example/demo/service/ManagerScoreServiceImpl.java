@@ -1,10 +1,10 @@
 package com.example.demo.service;
+
+import com.example.demo.dto.PageResponse;
 import com.example.demo.entity.ManagerScoreChange;
-import com.example.demo.mapper.ExperienceShareMapper;
 import com.example.demo.mapper.ManagerScoreChangeMapper;
 import com.example.demo.mapper.ManagerScoreMapper;
 import jakarta.annotation.Resource;
-import java.math.BigInteger;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +15,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
+
+/**
+ * 客户经理积分服务实现类
+ * 负责计算和管理客户经理的积分、段位和排名
+ */
 
 @Slf4j
 @Service
@@ -28,11 +33,6 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
   @Resource
   private ManagerScoreChangeMapper managerScoreChangeMapper;
 
-  // ========== 新增注入 ==========
-
-  @Resource
-  private ExperienceShareMapper experienceShareMapper; // 经验分享Mapper
-
 
   // ===================== 固定常量 =====================
   private static final String ACCOUNT_STATUS_OPEN = "1";
@@ -40,93 +40,111 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
   private static final BigDecimal ZERO = new BigDecimal("0.00");
 
   // ===================== 核心入口方法 =====================
+  /**
+   * 执行客户经理积分全量计算
+   * 包含：
+   * 1. 更新已开户客户状态
+   * 2. 加载加分规则
+   * 3. 查询客户产品信息
+   * 4. 查询客户经理排名信息
+   * 5. 计算各类积分（客群、基础户、有效户、产品、经验分享）
+   * 6. 应用积分倍数
+   * 7. 更新段位和排名
+   */
   @Override
   @Transactional(rollbackFor = Exception.class)
   public void calculateAllManagerScore() {
-    log.info("===== 开始执行客户经理积分全量计算（保留2位小数） =====");
+    log.info("===== 开始执行客户经理积分全量计算（保留2位小数） ======");
 
-    // 1. 分步查询所有积分数据
-    List<Map<String, Object>> baseScoreList = managerScoreMapper.selectMaxGroupScore(ACCOUNT_STATUS_OPEN);
-    List<Map<String, Object>> productScoreList = managerScoreMapper.selectProductScore(ACCOUNT_STATUS_OPEN);
-    List<Map<String, Object>> shareScoreList = managerScoreMapper.selectShareScore(SHARE_STATUS_PASS);
+    // 1. 更新已开户客户的account_status为1
+    managerScoreMapper.updateAccountStatusToOpened();
+    log.info("已更新所有客户的开户状态为已开户");
 
-    // ==================== 客户类积分（基础户+有效户） ====================
-    List<Map<String, Object>> customerStatList = managerScoreMapper.statCustomerCount();
-    BigDecimal basePoint = managerScoreMapper.getAddScore("base");
-    BigDecimal validPoint = managerScoreMapper.getAddScore("valid");
-    Map<String, Object> ruleMap = managerScoreMapper.getDeductRule();
-    BigDecimal basicReduce = (BigDecimal) ruleMap.get("basicReduce");
-    BigDecimal validReduce = (BigDecimal) ruleMap.get("validReduce");
+    // 2. 查询加分规则
+    List<Map<String, Object>> scoreAddRules = managerScoreMapper.selectScoreAddRules();
+    Map<String, BigDecimal> addRuleMap = new HashMap<>();
+    for (Map<String, Object> rule : scoreAddRules) {
+      String itemName = (String) rule.get("itemName");
+      BigDecimal points = new BigDecimal(String.valueOf(rule.get("points")));
+      addRuleMap.put(itemName, points);
+    }
+    log.info("加载加分规则: {}", addRuleMap);
 
-    Map<String, BigDecimal> customerScoreMap = new HashMap<>();
-    // 存储基础户加分、扣分，有效户加分、扣分，用于记录日志
-    Map<String, Map<String, BigDecimal>> customerDetailMap = new HashMap<>();
-    for (Map<String, Object> map : customerStatList) {
-      String managerNo = (String) map.get("managerNo");
+    // 3. 查询客户产品信息
+    List<Map<String, Object>> customerProducts = managerScoreMapper.selectCustomerProducts();
+    log.info("查询到 {} 个客户产品记录", customerProducts.size());
 
-      long base0 = ((Number) map.get("base_tag0")).longValue();
-      long base1 = ((Number) map.get("base_tag1")).longValue();
-      long valid0 = ((Number) map.get("valid_tag0")).longValue();
-      long valid1 = ((Number) map.get("valid_tag1")).longValue();
+    // 4. 查询客户经理基础户增量排名
+    List<Map<String, Object>> baseIncrementRank = managerScoreMapper.selectBaseCustomerIncrementRank();
+    Map<String, Integer> baseRankMap = new HashMap<>();
+    for (Map<String, Object> rank : baseIncrementRank) {
+      baseRankMap.put((String) rank.get("managerId"), ((Number) rank.get("rank")).intValue());
+    }
+    log.info("基础户增量排名: {}", baseRankMap);
 
-      BigDecimal base0Dec = new BigDecimal(base0);
-      BigDecimal base1Dec = new BigDecimal(base1);
-      BigDecimal valid0Dec = new BigDecimal(valid0);
-      BigDecimal valid1Dec = new BigDecimal(valid1);
+    // 5. 查询客户经理有效户增量排名
+    List<Map<String, Object>> validIncrementRank = managerScoreMapper.selectValidCustomerIncrementRank();
+    Map<String, Integer> validRankMap = new HashMap<>();
+    for (Map<String, Object> rank : validIncrementRank) {
+      validRankMap.put((String) rank.get("managerId"), ((Number) rank.get("rank")).intValue());
+    }
+    log.info("有效户增量排名: {}", validRankMap);
 
-      // 基础户
-      BigDecimal baseAdd = base1Dec.multiply(basePoint);
-      BigDecimal baseDown = base0Dec.subtract(base1Dec).max(BigDecimal.ZERO);
-      BigDecimal baseDeduct = baseDown.multiply(basicReduce);
-      BigDecimal baseTotal = baseAdd.subtract(baseDeduct);
+    // 6. 查询客户号对应的客户经理ID、客群编码和客户名称
+    List<Map<String, Object>> customerInfoList = managerScoreMapper.selectCustomerInfoWithGroupCode();
+    log.info("查询到 {} 个已开户客户", customerInfoList.size());
 
-      // 有效户
-      BigDecimal validAdd = valid1Dec.multiply(validPoint);
-      BigDecimal validDown = valid0Dec.subtract(valid1Dec).max(BigDecimal.ZERO);
-      BigDecimal validDeduct = validDown.multiply(validReduce);
-      BigDecimal validTotal = validAdd.subtract(validDeduct);
+    // 7. 查询客户号对应的基础户/有效户状态
+    List<Map<String, Object>> customerDetailList = managerScoreMapper.selectCustomerDetailStatus();
+    log.info("查询到 {} 个客户的基础户/有效户状态", customerDetailList.size());
 
-      BigDecimal customerScore = baseTotal.add(validTotal).setScale(2, RoundingMode.HALF_UP);
-      customerScoreMap.put(managerNo, customerScore);
-
-      // 存储明细，用于插入积分记录
-      Map<String, BigDecimal> detail = new HashMap<>();
-      detail.put("baseAdd", baseAdd);
-      detail.put("baseDeduct", baseDeduct);
-      detail.put("validAdd", validAdd);
-      detail.put("validDeduct", validDeduct);
-      customerDetailMap.put(managerNo, detail);
+    // 8. 构建客户基础户/有效户状态映射（只考虑最新类 tag_type=1）
+    Map<String, Map<String, Boolean>> customerStatusMap = new HashMap<>();
+    for (Map<String, Object> map : customerDetailList) {
+      Integer tagType = (Integer) map.get("tagType");
+      if (tagType != 1) {
+        continue; // 只处理最新类
+      }
+      String customerId = String.valueOf(map.get("customerId"));
+      Map<String, Boolean> statusMap = new HashMap<>();
+      statusMap.put("isBase", map.get("isBase") != null && (Integer) map.get("isBase") == 1);
+      statusMap.put("isValid", map.get("isValid") != null && (Integer) map.get("isValid") == 1);
+      customerStatusMap.put(customerId, statusMap);
     }
 
-    // 2. 转换为Map结构
-    Map<String, BigDecimal> baseScoreMap = convertListToMap(baseScoreList);
-    Map<String, BigDecimal> productScoreMap = convertListToMap(productScoreList);
-    Map<String, BigDecimal> shareScoreMap = convertListToMap(shareScoreList);
+    // 9. 构建客户产品映射
+    Map<String, Map<String, List<String>>> customerProductMap = new HashMap<>();
+    for (Map<String, Object> product : customerProducts) {
+      String customerNo = (String) product.get("customerNo");
+      String managerId = (String) product.get("managerId");
+      String productName = (String) product.get("productName");
+      
+      if (!customerProductMap.containsKey(managerId)) {
+        customerProductMap.put(managerId, new HashMap<>());
+      }
+      
+      Map<String, List<String>> managerProducts = customerProductMap.get(managerId);
+      if (!managerProducts.containsKey(customerNo)) {
+        managerProducts.put(customerNo, new ArrayList<>());
+      }
+      
+      managerProducts.get(customerNo).add(productName);
+    }
 
-    // 3. 汇总所有客户经理ID
-    Set<String> managerIdSet = new HashSet<>();
-    managerIdSet.addAll(baseScoreMap.keySet());
-    managerIdSet.addAll(productScoreMap.keySet());
-    managerIdSet.addAll(shareScoreMap.keySet());
-    managerIdSet.addAll(customerScoreMap.keySet());
-
-    // 4. 遍历计算总积分 + 插入积分变动记录
+    // 10. 计算积分并插入变动记录
     Map<String, BigDecimal> totalScoreMap = new HashMap<>();
-    for (String managerId : managerIdSet) {
-      // 获取各类积分
-      BigDecimal baseScore = baseScoreMap.getOrDefault(managerId, ZERO);
-      BigDecimal productScore = productScoreMap.getOrDefault(managerId, ZERO);
-      BigDecimal shareScore = shareScoreMap.getOrDefault(managerId, ZERO);
-      BigDecimal customerScore = customerScoreMap.getOrDefault(managerId, ZERO);
 
-      // 计算总积分
-      BigDecimal totalScore = baseScore.add(productScore)
-          .add(shareScore)
-          .add(customerScore)
-          .setScale(2, RoundingMode.HALF_UP);
-      totalScoreMap.put(managerId, totalScore);
+    for (Map<String, Object> customerInfo : customerInfoList) {
+      String customerNo = String.valueOf(customerInfo.get("customerId"));
+      String managerId = (String) customerInfo.get("managerId");
+      String groupCode = (String) customerInfo.get("groupCode");
+      String customerName = (String) customerInfo.get("customerName");
 
-      // ===================== 🔥 核心：查询客户经理姓名、支行 =====================
+      if (managerId == null || managerId.isEmpty()) {
+        continue;
+      }
+
+      // 查询客户经理信息
       Map<String, String> managerInfo = managerScoreChangeMapper.getManagerInfo(managerId);
       if (managerInfo == null) {
         throw new RuntimeException("客户经理不存在！");
@@ -134,51 +152,184 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
       String managerName = managerInfo.get("manager_name");
       String branchName = managerInfo.get("branch_name");
 
-      // ===================== 🔥 1. 客群分类积分 插入记录 =====================
-      if (baseScore.compareTo(ZERO) > 0) {
-        saveScoreRecord(managerId, managerName, branchName,
-            "客群分类积分", "客户所属客群奖励", baseScore);
+      // 初始化客户经理总积分
+      if (!totalScoreMap.containsKey(managerId)) {
+        totalScoreMap.put(managerId, ZERO);
       }
 
-      // ===================== 🔥 2. 产品积分 插入记录 =====================
-      if (productScore.compareTo(ZERO) > 0) {
-        saveScoreRecord(managerId, managerName, branchName,
-            "产品营销积分", "产品业务办理奖励", productScore);
+      // 5.1 根据group_code给manager_id加分
+      if (groupCode != null && !groupCode.isEmpty()) {
+        // 这里简化处理，实际应该根据group_code查询对应的积分值
+        // 假设每个group_code对应10分
+        BigDecimal groupScore = new BigDecimal("10.00");
+        totalScoreMap.put(managerId, totalScoreMap.get(managerId).add(groupScore));
+        // 客群分类积分变更不需要添加到积分变更记录
       }
 
-      // ===================== 🔥 3. 经验分享积分 插入记录 =====================
-      if (shareScore.compareTo(ZERO) > 0) {
-        saveScoreRecord(managerId, managerName, branchName,
-            "经验分享积分", "经验分享审核通过奖励", shareScore);
+      // 5.2 检查客户是否为基础户/有效户并加分
+      Map<String, Boolean> statusMap = customerStatusMap.get(customerNo);
+      if (statusMap != null) {
+        if (statusMap.get("isBase")) {
+          BigDecimal baseScore = addRuleMap.getOrDefault("base", new BigDecimal("0.00")); // 基础户加分
+          if (baseScore.compareTo(ZERO) > 0) {
+            totalScoreMap.put(managerId, totalScoreMap.get(managerId).add(baseScore));
+            // 插入基础户积分记录
+            saveScoreRecord(managerId, managerName, branchName,
+                "基础户积分", customerName + "基础户达标", baseScore, customerNo, customerName, null, null);
+          }
+        }
+        if (statusMap.get("isValid")) {
+          BigDecimal validScore = addRuleMap.getOrDefault("valid", new BigDecimal("0.00")); // 有效户加分
+          if (validScore.compareTo(ZERO) > 0) {
+            totalScoreMap.put(managerId, totalScoreMap.get(managerId).add(validScore));
+            // 插入有效户积分记录
+            saveScoreRecord(managerId, managerName, branchName,
+                "有效户积分", customerName + "有效户达标", validScore, customerNo, customerName, null, null);
+          }
+        }
       }
 
-      // ===================== 🔥 4. 基础户/有效户 积分/扣分 插入记录 =====================
-      Map<String, BigDecimal> detail = customerDetailMap.getOrDefault(managerId, new HashMap<>());
-      BigDecimal baseAdd = detail.getOrDefault("baseAdd", ZERO);
-      BigDecimal baseDeduct = detail.getOrDefault("baseDeduct", ZERO);
-      BigDecimal validAdd = detail.getOrDefault("validAdd", ZERO);
-      BigDecimal validDeduct = detail.getOrDefault("validDeduct", ZERO);
+      // 5.3 检查客户是否有产品并加分（一个产品3分，封顶6分）
+      Map<String, List<String>> managerProducts = customerProductMap.get(managerId);
+      if (managerProducts != null) {
+        List<String> products = managerProducts.get(customerNo);
+        if (products != null && !products.isEmpty()) {
+          // 计算产品得分，最多2个产品（6分）
+          int productCount = Math.min(products.size(), 2);
+          BigDecimal productScore = new BigDecimal(productCount * 3);
+          totalScoreMap.put(managerId, totalScoreMap.get(managerId).add(productScore));
+          
+          // 构建产品名称字符串
+          String productNames = String.join("、", products);
+          // 插入产品积分记录
+          saveScoreRecord(managerId, managerName, branchName,
+              "产品积分", customerName + "有" + productNames, productScore, customerNo, customerName, null, null);
+        }
+      }
 
-      // 基础户加分
-      if (baseAdd.compareTo(ZERO) > 0) {
-        saveScoreRecord(managerId, managerName, branchName,
-            "基础户积分", "基础户数量达标奖励", baseAdd);
+      // 5.4 计算积分倍数
+      // 1. 计算客户标签数量
+      String tags = (String) customerInfo.get("tags");
+      int tagCount = 0;
+      if (tags != null && !tags.isEmpty()) {
+        tagCount = tags.split(",").length;
       }
-      // 基础户下跌扣分（负数）
-      if (baseDeduct.compareTo(ZERO) > 0) {
-        saveScoreRecord(managerId, managerName, branchName,
-            "基础户下跌扣分", "基础户数量减少扣减", baseDeduct.negate());
+      
+      // 2. 确定倍数
+      BigDecimal multiplier = new BigDecimal("1.0");
+      String multiplierReason = "";
+      
+      // 标签数量倍数：3个及以上标签 1.5倍
+      if (tagCount >= 3) {
+        multiplier = new BigDecimal("1.5");
+        multiplierReason = "客户标签数量达到3个及以上";
       }
-      // 有效户加分
-      if (validAdd.compareTo(ZERO) > 0) {
-        saveScoreRecord(managerId, managerName, branchName,
-            "有效户积分", "有效户数量达标奖励", validAdd);
+      // 有效户增量排名前20：1.4倍
+      else if (validRankMap.containsKey(managerId) && validRankMap.get(managerId) <= 20) {
+        multiplier = new BigDecimal("1.4");
+        multiplierReason = "有效户增量排名前20";
       }
-      // 有效户下跌扣分（负数）
-      if (validDeduct.compareTo(ZERO) > 0) {
-        saveScoreRecord(managerId, managerName, branchName,
-            "有效户下跌扣分", "有效户数量减少扣减", validDeduct.negate());
+      // 基础户增量排名前10：1.3倍
+      else if (baseRankMap.containsKey(managerId) && baseRankMap.get(managerId) <= 10) {
+        multiplier = new BigDecimal("1.3");
+        multiplierReason = "基础户增量排名前10";
       }
+      
+      // 3. 应用倍数（如果倍数大于1）
+      if (multiplier.compareTo(new BigDecimal("1.0")) > 0) {
+        // 计算当前客户经理的积分
+        BigDecimal currentScore = totalScoreMap.get(managerId);
+        // 计算增量
+        BigDecimal scoreIncrease = currentScore.multiply(multiplier.subtract(new BigDecimal("1.0")));
+        // 更新总积分
+        totalScoreMap.put(managerId, currentScore.add(scoreIncrease));
+        
+        // 插入倍数积分记录
+        saveScoreRecord(managerId, managerName, branchName,
+            "倍数积分", multiplierReason + "，积分放大" + multiplier + "倍", scoreIncrease, customerNo, customerName, null, null);
+      }
+    }
+
+    // 12. 计算基础户和有效户减少的扣分
+    List<Map<String, Object>> customerStatList = managerScoreMapper.statCustomerCount();
+    Map<String, Object> ruleMap = managerScoreMapper.getDeductRule();
+    BigDecimal basicReduce = (BigDecimal) ruleMap.get("basicReduce");
+    BigDecimal validReduce = (BigDecimal) ruleMap.get("validReduce");
+
+    for (Map<String, Object> map : customerStatList) {
+      String managerId = (String) map.get("managerNo");
+
+      long base0 = ((Number) map.get("base_tag0")).longValue(); // 基数类基础户
+      long base1 = ((Number) map.get("base_tag1")).longValue(); // 最新类基础户
+      long valid0 = ((Number) map.get("valid_tag0")).longValue(); // 基数类有效户
+      long valid1 = ((Number) map.get("valid_tag1")).longValue(); // 最新类有效户
+
+      // 计算减少量
+      long baseDecrease = Math.max(0, base0 - base1);
+      long validDecrease = Math.max(0, valid0 - valid1);
+
+      if (baseDecrease > 0 || validDecrease > 0) {
+        // 查询客户经理信息
+        Map<String, String> managerInfo = managerScoreChangeMapper.getManagerInfo(managerId);
+        if (managerInfo == null) {
+          throw new RuntimeException("客户经理不存在！");
+        }
+        String managerName = managerInfo.get("manager_name");
+        String branchName = managerInfo.get("branch_name");
+
+        // 计算扣分数
+        if (baseDecrease > 0) {
+          BigDecimal baseDeduct = new BigDecimal(baseDecrease).multiply(basicReduce);
+          totalScoreMap.put(managerId, totalScoreMap.getOrDefault(managerId, ZERO).subtract(baseDeduct));
+          // 插入基础户下跌扣分记录
+          saveScoreRecord(managerId, managerName, branchName,
+              "基础户下跌扣分", "基础户数量减少扣减", baseDeduct.negate(), "", "", null, null);
+        }
+
+        if (validDecrease > 0) {
+          BigDecimal validDeduct = new BigDecimal(validDecrease).multiply(validReduce);
+          totalScoreMap.put(managerId, totalScoreMap.getOrDefault(managerId, ZERO).subtract(validDeduct));
+          // 插入有效户下跌扣分记录
+          saveScoreRecord(managerId, managerName, branchName,
+              "有效户下跌扣分", "有效户数量减少扣减", validDeduct.negate(), "", "", null, null);
+        }
+      }
+    }
+
+    // 13. 计算经验分享积分
+    List<Map<String, Object>> experienceShares = managerScoreMapper.selectExperienceShares();
+    log.info("查询到 {} 个已审批通过的经验分享", experienceShares.size());
+
+    for (Map<String, Object> share : experienceShares) {
+      Long shareId = (Long) share.get("shareId");
+      String managerId = (String) share.get("managerId");
+      String shareTitle = (String) share.get("shareTitle");
+
+      if (managerId == null || managerId.isEmpty()) {
+        continue;
+      }
+
+      // 查询客户经理信息
+      Map<String, String> managerInfo = managerScoreChangeMapper.getManagerInfo(managerId);
+      if (managerInfo == null) {
+        throw new RuntimeException("客户经理不存在！");
+      }
+      String managerName = managerInfo.get("manager_name");
+      String branchName = managerInfo.get("branch_name");
+
+      // 每个经验分享加30分
+      BigDecimal shareScore = new BigDecimal("30.00");
+      totalScoreMap.put(managerId, totalScoreMap.getOrDefault(managerId, ZERO).add(shareScore));
+
+      // 插入经验分享积分记录
+      saveScoreRecord(managerId, managerName, branchName,
+          "经验分享积分", shareTitle + "经验分享审核通过", shareScore, "", "", shareId, shareTitle);
+    }
+
+    // 14. 更新段位和总积分
+    for (Map.Entry<String, BigDecimal> entry : totalScoreMap.entrySet()) {
+      String managerId = entry.getKey();
+      BigDecimal totalScore = entry.getValue().setScale(2, RoundingMode.HALF_UP);
 
       // 更新段位和总积分
       String levelCode = managerScoreMapper.selectLevelCodeByScore(totalScore);
@@ -189,29 +340,15 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
       managerScoreMapper.updateManagerScore(param);
     }
 
-    // 5. 更新排名
+    // 15. 更新排名
     calculateAndUpdateRank(totalScoreMap);
     log.info("===== 客户经理积分计算完成 =====");
   }
 
-  // ===================== 工具方法 =====================
-  private Map<String, BigDecimal> convertListToMap(List<Map<String, Object>> list) {
-    if (list == null || list.isEmpty()) {
-      return new HashMap<>();
-    }
-    return list.stream()
-        .filter(map -> map.get("managerId") != null)
-        .collect(Collectors.toMap(
-            map -> (String) map.get("managerId"),
-            map -> {
-              if (map.containsKey("baseScore")) return new BigDecimal(String.valueOf(map.get("baseScore")));
-              if (map.containsKey("productScore")) return new BigDecimal(String.valueOf(map.get("productScore")));
-              if (map.containsKey("shareScore")) return new BigDecimal(String.valueOf(map.get("shareScore")));
-              return ZERO;
-            }
-        ));
-  }
-
+  /**
+   * 计算并更新客户经理排名
+   * @param totalScoreMap 客户经理总积分映射
+   */
   private void calculateAndUpdateRank(Map<String, BigDecimal> totalScoreMap) {
     if (totalScoreMap.isEmpty()) return;
 
@@ -235,10 +372,6 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
 
   @Override
   public Map<String, Object> getManagerScoreDetail(String managerId) {
-    // 常量
-    final String ACCOUNT_STATUS_OPEN = "1";
-    final Integer SHARE_STATUS_PASS = 1;
-    final BigDecimal ZERO = new BigDecimal("0.00");
 
     // 1. 查询三项积分明细
     BigDecimal baseScore = managerScoreMapper.selectSingleBaseScore(managerId, ACCOUNT_STATUS_OPEN);
@@ -272,25 +405,87 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     return result;
   }
 
+  /**
+   * 查询支行排名列表
+   * @return 支行排名列表
+   */
   @Override
   public List<Map<String, Object>> getBranchRankList() {
     return managerScoreMapper.selectBranchRankList();
   }
 
+  /**
+   * 查询段位排名列表
+   * @return 段位排名列表
+   */
   @Override
   public List<Map<String, Object>> getLevelRankList() {
     return managerScoreMapper.selectLevelRankList();
   }
 
+  /**
+   * 查询段位数量
+   * @return 段位数量列表
+   */
   @Override
   public List<Map<String, Object>> getLevelCount() {
     return managerScoreMapper.selectLevelCount();
   }
 
+  /**
+   * 获取所有客户经理的积分变更记录（分页）
+   * @param page 页码
+   * @param size 每页大小
+   * @return 积分变更记录列表
+   */
+  @Override
+  public PageResponse<Map<String, Object>> getScoreChangeList(int page, int size) {
+    int offset = (page - 1) * size;
+    List<Map<String, Object>> list = managerScoreMapper.selectScoreChangeList(offset, size);
+    long total = managerScoreMapper.countScoreChangeList();
+    return PageResponse.success(total, page, size, list);
+  }
 
-  // ===================== 调用示例：积分变动时插入 =====================
+  /**
+   * 获取单个客户经理的积分变更记录（分页）
+   * @param managerId 客户经理ID
+   * @param page 页码
+   * @param size 每页大小
+   * @return 积分变更记录列表
+   */
+  @Override
+  public PageResponse<Map<String, Object>> getScoreChangeListByManagerId(String managerId, int page, int size) {
+    int offset = (page - 1) * size;
+    List<Map<String, Object>> list = managerScoreMapper.selectScoreChangeListByManagerId(managerId, offset, size);
+    long total = managerScoreMapper.countScoreChangeListByManagerId(managerId);
+    return PageResponse.success(total, page, size, list);
+  }
+
+
+  /**
+   * 保存积分变动记录
+   * @param managerId 客户经理ID
+   * @param managerName 客户经理名称
+   * @param branchName 所属支行
+   * @param treasureName 积分类型名称
+   * @param treasureDesc 积分变动描述
+   * @param score 积分值
+   * @param customerNo 客户号
+   * @param customerName 客户名称
+   * @param shareId 经验分享ID
+   * @param shareTitle 经验分享标题
+   */
   private void saveScoreRecord(String managerId, String managerName, String branchName,
-      String treasureName, String treasureDesc, BigDecimal score) {
+      String treasureName, String treasureDesc, BigDecimal score, String customerNo, String customerName, Long shareId, String shareTitle) {
+    // 检查是否存在重复记录
+    // 重复条件：相同的客户经理ID、积分类型、客户号（或为空）、分享ID（或为空）
+    int count = managerScoreMapper.checkDuplicateScoreChange(managerId, treasureName, customerNo, shareId);
+    if (count > 0) {
+      log.info("积分变动记录已存在，跳过插入: managerId={}, treasureName={}, customerNo={}, shareId={}", 
+              managerId, treasureName, customerNo, shareId);
+      return;
+    }
+
     ManagerScoreChange change = new ManagerScoreChange();
     change.setTreasureName(treasureName);
     change.setTreasureDesc(treasureDesc);
@@ -302,8 +497,38 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     change.setTriggerTime(LocalDateTime.now());
     change.setStatus("通过");
     change.setRemark("系统自动计算");
+    change.setCustomerNo(customerNo);
+    change.setCustomerName(customerName);
+    change.setShareId(shareId);
+    change.setShareTitle(shareTitle);
 
     // 插入记录表
     managerScoreChangeMapper.insertScoreChange(change);
+    log.info("积分变动记录插入成功: managerId={}, treasureName={}, score={}", managerId, treasureName, score);
+
+    // 立即更新客户经理的积分、段位和排名
+    updateManagerScoreAndRank(managerId);
+  }
+
+  /**
+   * 积分变动后更新客户经理的总积分、段位和排名
+   * @param managerId 客户经理ID
+   */
+  private void updateManagerScoreAndRank(String managerId) {
+    // 计算客户经理的最新总积分
+    BigDecimal totalScore = managerScoreMapper.calculateTotalScore(managerId);
+    
+    // 查询对应的段位
+    String levelCode = managerScoreMapper.selectLevelCodeByScore(totalScore);
+    
+    // 更新积分和段位
+    Map<String, Object> param = new HashMap<>();
+    param.put("managerId", managerId);
+    param.put("totalScore", totalScore.setScale(2, RoundingMode.HALF_UP));
+    param.put("levelCode", levelCode);
+    managerScoreMapper.updateManagerScore(param);
+    
+    // 更新排名
+    managerScoreMapper.updateRanking();
   }
 }

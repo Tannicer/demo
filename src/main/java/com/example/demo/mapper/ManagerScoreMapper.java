@@ -70,4 +70,81 @@ public interface ManagerScoreMapper {
   BigDecimal getAddScore(String type);
 
   Map<String, Object> getDeductRule();
+
+  /**
+   * 更新已开户客户的account_status为1
+   */
+  void updateAccountStatusToOpened();
+
+  /**
+   * 查询客户号对应的客户经理ID和客群编码
+   */
+  List<Map<String, Object>> selectCustomerInfoWithGroupCode();
+
+  /**
+   * 查询客户号对应的基础户/有效户状态
+   */
+  List<Map<String, Object>> selectCustomerDetailStatus();
+
+  /**
+   * 查询客户经理的经验分享记录（已提交且审批通过）
+   */
+  List<Map<String, Object>> selectExperienceShares();
+
+  /**
+   * 查询加分规则
+   */
+  List<Map<String, Object>> selectScoreAddRules();
+
+  /**
+   * 计算客户经理的总积分
+   */
+  BigDecimal calculateTotalScore(String managerId);
+
+  /**
+   * 更新客户经理排名
+   */
+  void updateRanking();
+
+  /**
+   * 查询客户产品信息
+   */
+  List<Map<String, Object>> selectCustomerProducts();
+
+  /**
+   * 查询客户经理基础户增量排名
+   */
+  List<Map<String, Object>> selectBaseCustomerIncrementRank();
+
+  /**
+   * 查询客户经理有效户增量排名
+   */
+  List<Map<String, Object>> selectValidCustomerIncrementRank();
+
+  /**
+   * 检查是否存在重复的积分变更记录
+   */
+  int checkDuplicateScoreChange(@Param("managerId") String managerId, @Param("treasureName") String treasureName, 
+                               @Param("customerNo") String customerNo, @Param("shareId") Long shareId);
+
+  /**
+   * 查询所有客户经理的积分变更记录（分页）
+   */
+  List<Map<String, Object>> selectScoreChangeList(@Param("offset") int offset, @Param("size") int size);
+
+  /**
+   * 查询单个客户经理的积分变更记录（分页）
+   */
+  List<Map<String, Object>> selectScoreChangeListByManagerId(@Param("managerId") String managerId, 
+                                                            @Param("offset") int offset, @Param("size") int size);
+
+  /**
+   * 查询所有积分变更记录的总数
+   */
+  long countScoreChangeList();
+
+  /**
+   * 查询单个客户经理的积分变更记录总数
+   */
+  long countScoreChangeListByManagerId(@Param("managerId") String managerId);
 }

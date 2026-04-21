@@ -13,6 +13,11 @@ public class CustomerInfo {
    */
   private Long id;
 
+   /**
+   * 客户号（18位）
+   */
+  private String customerNo;
+
   /**
    * 统一信用代码（18位）
    */
