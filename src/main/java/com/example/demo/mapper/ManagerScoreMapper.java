@@ -42,7 +42,12 @@ public interface ManagerScoreMapper {
 
   List<Map<String, Object>> statCustomerCount();
 
-  Map<String, Object> getDeductRule();
+  List<Map<String, Object>> getDeductRule();
+
+  /**
+   * 查询客群分类积分
+   */
+  List<Map<String, Object>> selectCustomerGroupScores();
 
   /**
    * 更新已开户客户的account_status为1

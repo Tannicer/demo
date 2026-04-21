@@ -117,7 +117,7 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
             totalScoreMap.put(managerId, totalScoreMap.get(managerId).add(baseScore));
             // 插入基础户积分记录
             saveScoreRecord(managerId, managerName, branchName,
-                "基础户积分", customerName + "基础户达标", baseScore, customerNo, customerName, null, null);
+              "基础户达标", customerName + "基础户达标", baseScore, customerNo, customerName, null, null);
           }
         }
         if (statusMap.get("isValid")) {
@@ -126,7 +126,7 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
             totalScoreMap.put(managerId, totalScoreMap.get(managerId).add(validScore));
             // 插入有效户积分记录
             saveScoreRecord(managerId, managerName, branchName,
-                "有效户积分", customerName + "有效户达标", validScore, customerNo, customerName, null, null);
+              "有效户达标", customerName + "有效户达标", validScore, customerNo, customerName, null, null);
           }
         }
       }
@@ -194,9 +194,18 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
 
     // 12. 计算基础户和有效户减少的扣分
     List<Map<String, Object>> customerStatList = managerScoreMapper.statCustomerCount();
-    Map<String, Object> ruleMap = managerScoreMapper.getDeductRule();
-    BigDecimal basicReduce = (BigDecimal) ruleMap.get("basicReduce");
-    BigDecimal validReduce = (BigDecimal) ruleMap.get("validReduce");
+    List<Map<String, Object>> deductRules = managerScoreMapper.getDeductRule();
+    
+    // 构建扣分规则映射
+    Map<String, BigDecimal> deductRuleMap = new HashMap<>();
+    for (Map<String, Object> rule : deductRules) {
+      String itemName = (String) rule.get("itemName");
+      BigDecimal points = (BigDecimal) rule.get("points");
+      deductRuleMap.put(itemName, points);
+    }
+    
+    BigDecimal basicReduce = deductRuleMap.getOrDefault("basic", BigDecimal.ZERO);
+    BigDecimal validReduce = deductRuleMap.getOrDefault("valid", BigDecimal.ZERO);
 
     for (Map<String, Object> map : customerStatList) {
       String managerId = (String) map.get("managerNo");
@@ -238,7 +247,16 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
       }
     }
 
-    // 13. 计算经验分享积分
+    // 13. 处理客群分类积分
+    List<Map<String, Object>> customerGroupScores = managerScoreMapper.selectCustomerGroupScores();
+    Map<String, BigDecimal> groupScoreMap = new HashMap<>();
+    for (Map<String, Object> group : customerGroupScores) {
+      String groupName = (String) group.get("groupName");
+      BigDecimal score = (BigDecimal) group.get("score");
+      groupScoreMap.put(groupName, score);
+    }
+
+    // 14. 计算经验分享积分
     List<Map<String, Object>> experienceShares = managerScoreMapper.selectExperienceShares();
     log.info("查询到 {} 个已审批通过的经验分享", experienceShares.size());
 
@@ -374,11 +392,11 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
   /**
    * 保存积分变动记录
    * @param managerId 客户经理ID
-   * @param managerName 客户经理名称
+   * @param managerName 客户经理姓名
    * @param branchName 所属支行
-   * @param treasureName 积分类型名称
-   * @param treasureDesc 积分变动描述
-   * @param score 积分值
+   * @param treasureName 锦囊名称
+   * @param treasureDesc 锦囊描述
+   * @param score 积分变动值
    * @param customerNo 客户号
    * @param customerName 客户名称
    * @param shareId 经验分享ID
@@ -498,7 +516,7 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     for (Map<String, Object> product : customerProducts) {
       String customerNo = (String) product.get("customerNo");
       String managerId = (String) product.get("managerId");
-      String productName = (String) product.get("productName");
+      String productNames = (String) product.get("productName");
       
       if (!customerProductMap.containsKey(managerId)) {
         customerProductMap.put(managerId, new HashMap<>());
@@ -509,7 +527,16 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
         managerProducts.put(customerNo, new ArrayList<>());
       }
       
-      managerProducts.get(customerNo).add(productName);
+      // 分割逗号分隔的产品名称
+      if (productNames != null && !productNames.isEmpty()) {
+        String[] productArray = productNames.split(",");
+        for (String productName : productArray) {
+          String trimmedProductName = productName.trim();
+          if (!trimmedProductName.isEmpty()) {
+            managerProducts.get(customerNo).add(trimmedProductName);
+          }
+        }
+      }
     }
     return customerProductMap;
   }
