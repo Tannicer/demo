@@ -15,9 +15,9 @@ public interface ManagerScoreMapper {
 
 
   /**
-   * 根据总积分匹配段位编码
+   * 根据总积分匹配段位名称
    */
-  String selectLevelCodeByScore(@Param("totalScore") BigDecimal totalScore);
+  String selectLevelNameByScore(@Param("totalScore") BigDecimal totalScore);
 
   /**
    * 更新客户经理总积分、段位

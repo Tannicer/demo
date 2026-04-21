@@ -3,13 +3,26 @@
   "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.demo.mapper.ManagerScoreMapper">
 
-  <!-- 根据总积分匹配段位编码 -->
-  <select id="selectLevelCodeByScore" resultType="java.lang.String">
-    SELECT level_code
-    FROM level_info
-    WHERE is_deleted = 0
-      AND min_score &lt;= #{totalScore}
-      AND (max_score IS NULL OR max_score &gt;= #{totalScore})
+  <!-- 根据总积分匹配段位名称 -->
+  <select id="selectLevelNameByScore" resultType="java.lang.String">
+    SELECT COALESCE(
+      (
+        SELECT level_name
+        FROM level_info
+        WHERE is_deleted = 0
+          AND min_score &lt;= #{totalScore}
+          AND (max_score IS NULL OR max_score &gt;= #{totalScore})
+        ORDER BY min_score DESC
+        LIMIT 1
+      ),
+      (
+        SELECT level_name
+        FROM level_info
+        WHERE is_deleted = 0
+        ORDER BY min_score ASC
+        LIMIT 1
+      )
+    ) AS level_name
   </select>
 
   <!-- 更新总积分+段位 -->
@@ -17,7 +30,7 @@
     UPDATE manager_score_maintain
     SET
       total_score = #{totalScore},
-      level_code = #{levelCode},
+      level_name = #{levelName},
       update_time = NOW()
     WHERE manager_id = #{managerId}
       AND is_deleted = 0
@@ -48,7 +61,7 @@
       l.level_name       AS levelName
     FROM manager_score_maintain m
            LEFT JOIN level_info l
-                     ON m.level_code = l.level_code AND l.is_deleted = 0
+                     ON m.level_name = l.level_name AND l.is_deleted = 0
     WHERE m.is_deleted = 0
     ORDER BY m.total_score DESC
   </select>
@@ -60,7 +73,7 @@
       COUNT(m.manager_id) AS count
     FROM manager_score_maintain m
            LEFT JOIN level_info l
-                     ON m.level_code = l.level_code AND l.is_deleted = 0
+                     ON m.level_name = l.level_name AND l.is_deleted = 0
     WHERE m.is_deleted = 0
     GROUP BY l.level_name
     ORDER BY count DESC
@@ -154,7 +167,7 @@
     JOIN (
       SELECT
         manager_id,
-        ROW_NUMBER() OVER (ORDER BY total_score DESC) AS new_rank
+        DENSE_RANK() OVER (ORDER BY total_score DESC) AS new_rank
       FROM manager_score_maintain
       WHERE is_deleted = 0
     ) r ON m.manager_id = r.manager_id

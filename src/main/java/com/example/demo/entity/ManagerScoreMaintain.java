@@ -35,9 +35,9 @@ public class ManagerScoreMaintain {
   private BigDecimal totalScore;
 
   /**
-   * 段位编码（关联段位信息表）
+   * 段位名称（关联段位信息表）
    */
-  private String levelCode;
+  private String levelName;
 
   /**
    * 排名（动态更新）

@@ -56,76 +56,22 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     managerScoreMapper.updateAccountStatusToOpened();
     log.info("已更新所有客户的开户状态为已开户");
 
-    // 2. 查询加分规则
-    List<Map<String, Object>> scoreAddRules = managerScoreMapper.selectScoreAddRules();
-    Map<String, BigDecimal> addRuleMap = new HashMap<>();
-    for (Map<String, Object> rule : scoreAddRules) {
-      String itemName = (String) rule.get("itemName");
-      BigDecimal points = new BigDecimal(String.valueOf(rule.get("points")));
-      addRuleMap.put(itemName, points);
-    }
-    log.info("加载加分规则: {}", addRuleMap);
+    // 2. 加载加分规则
+    Map<String, BigDecimal> addRuleMap = loadScoreAddRules();
 
-    // 3. 查询客户产品信息
-    List<Map<String, Object>> customerProducts = managerScoreMapper.selectCustomerProducts();
-    log.info("查询到 {} 个客户产品记录", customerProducts.size());
+    // 3. 加载排名信息
+    Map<String, Integer> baseRankMap = loadBaseCustomerIncrementRank();
+    Map<String, Integer> validRankMap = loadValidCustomerIncrementRank();
 
-    // 4. 查询客户经理基础户增量排名
-    List<Map<String, Object>> baseIncrementRank = managerScoreMapper.selectBaseCustomerIncrementRank();
-    Map<String, Integer> baseRankMap = new HashMap<>();
-    for (Map<String, Object> rank : baseIncrementRank) {
-      baseRankMap.put((String) rank.get("managerId"), ((Number) rank.get("rank")).intValue());
-    }
-    log.info("基础户增量排名: {}", baseRankMap);
-
-    // 5. 查询客户经理有效户增量排名
-    List<Map<String, Object>> validIncrementRank = managerScoreMapper.selectValidCustomerIncrementRank();
-    Map<String, Integer> validRankMap = new HashMap<>();
-    for (Map<String, Object> rank : validIncrementRank) {
-      validRankMap.put((String) rank.get("managerId"), ((Number) rank.get("rank")).intValue());
-    }
-    log.info("有效户增量排名: {}", validRankMap);
-
-    // 6. 查询客户号对应的客户经理ID、客群编码和客户名称
+    // 4. 加载客户信息
     List<Map<String, Object>> customerInfoList = managerScoreMapper.selectCustomerInfoWithGroupCode();
     log.info("查询到 {} 个已开户客户", customerInfoList.size());
 
-    // 7. 查询客户号对应的基础户/有效户状态
-    List<Map<String, Object>> customerDetailList = managerScoreMapper.selectCustomerDetailStatus();
-    log.info("查询到 {} 个客户的基础户/有效户状态", customerDetailList.size());
+    // 5. 构建客户状态映射
+    Map<String, Map<String, Boolean>> customerStatusMap = buildCustomerStatusMap();
 
-    // 8. 构建客户基础户/有效户状态映射（只考虑最新类 tag_type=1）
-    Map<String, Map<String, Boolean>> customerStatusMap = new HashMap<>();
-    for (Map<String, Object> map : customerDetailList) {
-      Integer tagType = (Integer) map.get("tagType");
-      if (tagType != 1) {
-        continue; // 只处理最新类
-      }
-      String customerId = String.valueOf(map.get("customerId"));
-      Map<String, Boolean> statusMap = new HashMap<>();
-      statusMap.put("isBase", map.get("isBase") != null && (Integer) map.get("isBase") == 1);
-      statusMap.put("isValid", map.get("isValid") != null && (Integer) map.get("isValid") == 1);
-      customerStatusMap.put(customerId, statusMap);
-    }
-
-    // 9. 构建客户产品映射
-    Map<String, Map<String, List<String>>> customerProductMap = new HashMap<>();
-    for (Map<String, Object> product : customerProducts) {
-      String customerNo = (String) product.get("customerNo");
-      String managerId = (String) product.get("managerId");
-      String productName = (String) product.get("productName");
-      
-      if (!customerProductMap.containsKey(managerId)) {
-        customerProductMap.put(managerId, new HashMap<>());
-      }
-      
-      Map<String, List<String>> managerProducts = customerProductMap.get(managerId);
-      if (!managerProducts.containsKey(customerNo)) {
-        managerProducts.put(customerNo, new ArrayList<>());
-      }
-      
-      managerProducts.get(customerNo).add(productName);
-    }
+    // 6. 构建客户产品映射
+    Map<String, Map<String, List<String>>> customerProductMap = buildCustomerProductMap();
 
     // 10. 计算积分并插入变动记录
     Map<String, BigDecimal> totalScoreMap = new HashMap<>();
@@ -166,7 +112,7 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
       Map<String, Boolean> statusMap = customerStatusMap.get(customerNo);
       if (statusMap != null) {
         if (statusMap.get("isBase")) {
-          BigDecimal baseScore = addRuleMap.getOrDefault("base", new BigDecimal("0.00")); // 基础户加分
+          BigDecimal baseScore = addRuleMap.getOrDefault("basic", new BigDecimal("0.00")); // 基础户加分
           if (baseScore.compareTo(ZERO) > 0) {
             totalScoreMap.put(managerId, totalScoreMap.get(managerId).add(baseScore));
             // 插入基础户积分记录
@@ -328,11 +274,11 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
       BigDecimal totalScore = entry.getValue().setScale(2, RoundingMode.HALF_UP);
 
       // 更新段位和总积分
-      String levelCode = managerScoreMapper.selectLevelCodeByScore(totalScore);
+      String levelName = managerScoreMapper.selectLevelNameByScore(totalScore);
       Map<String, Object> param = new HashMap<>();
       param.put("managerId", managerId);
       param.put("totalScore", totalScore);
-      param.put("levelCode", levelCode);
+      param.put("levelName", levelName);
       managerScoreMapper.updateManagerScore(param);
     }
 
@@ -474,6 +420,101 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
   }
 
   /**
+   * 加载加分规则
+   * @return 加分规则映射
+   */
+  private Map<String, BigDecimal> loadScoreAddRules() {
+    List<Map<String, Object>> scoreAddRules = managerScoreMapper.selectScoreAddRules();
+    Map<String, BigDecimal> addRuleMap = new HashMap<>();
+    for (Map<String, Object> rule : scoreAddRules) {
+      String itemName = (String) rule.get("itemName");
+      BigDecimal points = new BigDecimal(String.valueOf(rule.get("points")));
+      addRuleMap.put(itemName, points);
+    }
+    log.info("加载加分规则: {}", addRuleMap);
+    return addRuleMap;
+  }
+
+  /**
+   * 加载基础户增量排名
+   * @return 基础户增量排名映射
+   */
+  private Map<String, Integer> loadBaseCustomerIncrementRank() {
+    List<Map<String, Object>> baseIncrementRank = managerScoreMapper.selectBaseCustomerIncrementRank();
+    Map<String, Integer> baseRankMap = new HashMap<>();
+    for (Map<String, Object> rank : baseIncrementRank) {
+      baseRankMap.put((String) rank.get("managerId"), ((Number) rank.get("rank")).intValue());
+    }
+    log.info("基础户增量排名: {}", baseRankMap);
+    return baseRankMap;
+  }
+
+  /**
+   * 加载有效户增量排名
+   * @return 有效户增量排名映射
+   */
+  private Map<String, Integer> loadValidCustomerIncrementRank() {
+    List<Map<String, Object>> validIncrementRank = managerScoreMapper.selectValidCustomerIncrementRank();
+    Map<String, Integer> validRankMap = new HashMap<>();
+    for (Map<String, Object> rank : validIncrementRank) {
+      validRankMap.put((String) rank.get("managerId"), ((Number) rank.get("rank")).intValue());
+    }
+    log.info("有效户增量排名: {}", validRankMap);
+    return validRankMap;
+  }
+
+  /**
+   * 构建客户状态映射
+   * @return 客户状态映射
+   */
+  private Map<String, Map<String, Boolean>> buildCustomerStatusMap() {
+    List<Map<String, Object>> customerDetailList = managerScoreMapper.selectCustomerDetailStatus();
+    log.info("查询到 {} 个客户的基础户/有效户状态", customerDetailList.size());
+
+    Map<String, Map<String, Boolean>> customerStatusMap = new HashMap<>();
+    for (Map<String, Object> map : customerDetailList) {
+      Integer tagType = (Integer) map.get("tagType");
+      if (tagType != 1) {
+        continue; // 只处理最新类
+      }
+      String customerId = String.valueOf(map.get("customerId"));
+      Map<String, Boolean> statusMap = new HashMap<>();
+      statusMap.put("isBase", map.get("isBase") != null && (Integer) map.get("isBase") == 1);
+      statusMap.put("isValid", map.get("isValid") != null && (Integer) map.get("isValid") == 1);
+      customerStatusMap.put(customerId, statusMap);
+    }
+    return customerStatusMap;
+  }
+
+  /**
+   * 构建客户产品映射
+   * @return 客户产品映射
+   */
+  private Map<String, Map<String, List<String>>> buildCustomerProductMap() {
+    List<Map<String, Object>> customerProducts = managerScoreMapper.selectCustomerProducts();
+    log.info("查询到 {} 个客户产品记录", customerProducts.size());
+
+    Map<String, Map<String, List<String>>> customerProductMap = new HashMap<>();
+    for (Map<String, Object> product : customerProducts) {
+      String customerNo = (String) product.get("customerNo");
+      String managerId = (String) product.get("managerId");
+      String productName = (String) product.get("productName");
+      
+      if (!customerProductMap.containsKey(managerId)) {
+        customerProductMap.put(managerId, new HashMap<>());
+      }
+      
+      Map<String, List<String>> managerProducts = customerProductMap.get(managerId);
+      if (!managerProducts.containsKey(customerNo)) {
+        managerProducts.put(customerNo, new ArrayList<>());
+      }
+      
+      managerProducts.get(customerNo).add(productName);
+    }
+    return customerProductMap;
+  }
+
+  /**
    * 积分变动后更新客户经理的总积分、段位和排名
    * @param managerId 客户经理ID
    */
@@ -482,13 +523,13 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     BigDecimal totalScore = managerScoreMapper.calculateTotalScore(managerId);
     
     // 查询对应的段位
-    String levelCode = managerScoreMapper.selectLevelCodeByScore(totalScore);
+    String levelName = managerScoreMapper.selectLevelNameByScore(totalScore);
     
     // 更新积分和段位
     Map<String, Object> param = new HashMap<>();
     param.put("managerId", managerId);
     param.put("totalScore", totalScore.setScale(2, RoundingMode.HALF_UP));
-    param.put("levelCode", levelCode);
+    param.put("levelName", levelName);
     managerScoreMapper.updateManagerScore(param);
     
     // 更新排名
