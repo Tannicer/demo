@@ -1,5 +1,6 @@
 package com.example.demo.service;
 import com.example.demo.entity.ManagerScoreChange;
+import com.example.demo.mapper.ExperienceShareMapper;
 import com.example.demo.mapper.ManagerScoreChangeMapper;
 import com.example.demo.mapper.ManagerScoreMapper;
 import jakarta.annotation.Resource;
@@ -26,6 +27,12 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
   // 注入Mapper
   @Resource
   private ManagerScoreChangeMapper managerScoreChangeMapper;
+
+  // ========== 新增注入 ==========
+
+  @Resource
+  private ExperienceShareMapper experienceShareMapper; // 经验分享Mapper
+
 
   // ===================== 固定常量 =====================
   private static final String ACCOUNT_STATUS_OPEN = "1";

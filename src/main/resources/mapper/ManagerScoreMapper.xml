@@ -5,15 +5,16 @@
 
     <!-- 第一步：查询已开户客户 → 客户经理【最高客群基础积分】 -->
     <select id="selectMaxGroupScore" resultType="java.util.Map">
-        SELECT
-            c.manager_id AS managerId,
-            ROUND(IFNULL(MAX(g.score), 0), 2) AS baseScore
-        FROM customer_info c
-                 LEFT JOIN customer_group_category g
-                           ON c.group_code = g.group_code AND g.is_deleted = 0
-        WHERE c.is_deleted = 0
-          AND c.account_status = #{accountStatus}
-        GROUP BY c.manager_id
+      SELECT
+        c.manager_id AS managerId,
+        ROUND(IFNULL(MAX(g.score), 0), 2) AS baseScore
+      FROM customer_info c
+             LEFT JOIN customer_group_category g
+                       ON FIND_IN_SET(g.group_code, c.group_code)
+                         AND g.is_deleted = 0
+      WHERE c.is_deleted = 0
+        AND c.account_status = #{accountStatus}
+      GROUP BY c.manager_id;
     </select>
 
     <!-- 第二步：查询已开户客户 → 产品奖励积分（封顶6分） -->
