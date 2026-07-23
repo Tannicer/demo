@@ -315,7 +315,7 @@ public class ManagerScoreServiceImpl implements ManagerScoreService {
     // 按积分倒序排名
     List<Map.Entry<String, BigDecimal>> sortedList = totalScoreMap.entrySet().stream()
         .sorted(Collections.reverseOrder(Map.Entry.comparingByValue()))
-        .collect(Collectors.toList());
+        .toList();
 
     for (int i = 0; i < sortedList.size(); i++) {
       Map<String, Object> param = new HashMap<>();

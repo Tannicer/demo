@@ -5,7 +5,6 @@ import com.example.demo.dto.AuditRecordDTO;
 import com.example.demo.entity.ExperienceShare;
 import com.example.demo.entity.ExperienceShareAudit;
 import com.example.demo.service.ExperienceShareService;
-import com.github.pagehelper.PageInfo;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
